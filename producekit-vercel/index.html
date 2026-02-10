@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProduceKit — Paperless Production Toolkit</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #0f1117; }
+      @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+      /* Google Places Autocomplete dark theme */
+      .pac-container { background-color: #1a1d23 !important; border: 1px solid #2a2d35 !important; border-radius: 8px !important; margin-top: 4px !important; box-shadow: 0 8px 30px rgba(0,0,0,0.5) !important; font-family: 'Inter',system-ui,sans-serif !important; z-index: 10000 !important; }
+      .pac-item { padding: 8px 12px !important; border-top: 1px solid #222 !important; color: #ccc !important; font-size: 13px !important; cursor: pointer !important; }
+      .pac-item:first-child { border-top: none !important; }
+      .pac-item:hover, .pac-item-selected { background-color: #E8C94A15 !important; }
+      .pac-item-query { color: #f0f0f0 !important; font-weight: 600 !important; }
+      .pac-matched { color: #E8C94A !important; font-weight: 700 !important; }
+      .pac-icon { display: none !important; }
+      .pac-item span { color: #888 !important; }
+      .pac-item-query span { color: #f0f0f0 !important; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
