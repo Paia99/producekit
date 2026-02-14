@@ -9,7 +9,7 @@ const defaultProject = () => ({
     { id:"c4", firstName:"James", lastName:"Okafor", name:"James Okafor", dept:"Sound", role:"Boom Op", phone:"+420 555 0104", email:"james@prod.com", worker:"extern", status:"available", notes:"", address:"5 Cedar Blvd, Prague 4", hotel:"", dietary:"" },
     { id:"c5", firstName:"Lena", lastName:"Kraft", name:"Lena Kraft", dept:"Wardrobe", role:"Costume Designer", phone:"+420 555 0105", email:"lena@prod.com", worker:"intern", status:"confirmed", notes:"", address:"31 Magnolia Dr, Prague 2", hotel:"", dietary:"" },
     { id:"c6", firstName:"Danny", lastName:"Reeves", name:"Danny Reeves", dept:"Electric", role:"Gaffer", phone:"+420 555 0106", email:"danny@prod.com", worker:"intern", status:"confirmed", notes:"", address:"7 Birch Rd, Prague 8", hotel:"", dietary:"" },
-    { id:"c7", firstName:"Rosa", lastName:"Vega", name:"Rosa Vega", dept:"Hair/Makeup", role:"Key MUA", phone:"+420 555 0107", email:"rosa@prod.com", worker:"extern", status:"hold", notes:"", address:"19 Palm Way, Prague 1", hotel:"", dietary:"" },
+    { id:"c7", firstName:"Rosa", lastName:"Vega", name:"Rosa Vega", dept:"Hair/Makeup", role:"Key MUA", phone:"+420 555 0107", email:"rosa@prod.com", worker:"extern", status:"imported", notes:"", address:"19 Palm Way, Prague 1", hotel:"", dietary:"" },
     { id:"c8", firstName:"Tom", lastName:"Blake", name:"Tom Blake", dept:"Driver", role:"Transport Captain", phone:"+420 555 0108", email:"tom@prod.com", worker:"intern", status:"confirmed", notes:"", address:"42 Sunset Blvd, Prague 5", hotel:"", dietary:"" },
   ],
   cast: [
@@ -17,7 +17,7 @@ const defaultProject = () => ({
     { id:2, firstName:"Marcus", lastName:"Webb", name:"Marcus Webb", roleNum:"#2", roleName:"Jack", phone:"+420 555 0202", email:"marcus@cast.com", address:"221 Canon Dr, Prague 2", hotel:"Chateau Marmont, Prague", dietary:"", status:"confirmed", notes:"Lead" },
     { id:3, firstName:"Suki", lastName:"Tanaka", name:"Suki Tanaka", roleNum:"#3", roleName:"Rose", phone:"+420 555 0203", email:"suki@cast.com", address:"112 Hillcrest Rd, Prague 6", hotel:"", dietary:"Gluten-free", status:"confirmed", notes:"Supporting" },
     { id:4, firstName:"Dev", lastName:"Patel", name:"Dev Patel", roleNum:"#4", roleName:"Omar", phone:"+420 555 0204", email:"dev@cast.com", address:"8 Wilshire Pl, Prague 3", hotel:"", dietary:"", status:"available", notes:"Supporting" },
-    { id:5, firstName:"Claire", lastName:"Duval", name:"Claire Duval", roleNum:"#5", roleName:"Waitress", phone:"+420 555 0205", email:"claire@cast.com", address:"66 Melrose Ave, Prague 1", hotel:"", dietary:"Vegan", status:"hold", notes:"Day player" },
+    { id:5, firstName:"Claire", lastName:"Duval", name:"Claire Duval", roleNum:"#5", roleName:"Waitress", phone:"+420 555 0205", email:"claire@cast.com", address:"66 Melrose Ave, Prague 1", hotel:"", dietary:"Vegan", status:"imported", notes:"Day player" },
   ],
   locations: [
     { id:"loc1", name:"Diana's Apartment", address:"Barrandov Studios, Prague 5", type:"Set/Stage", contact:"", phone:"", notes:"Main set — Stage 4", permit:true },

@@ -1,7 +1,9 @@
 import { useState, useRef } from "react";
 import { DEPARTMENTS, I, StatusBadge, Modal, IS, LS, BP, BS, BD, AddressInput } from "./config.jsx";
 
-const STATUSES = ["confirmed","available","hold","unavailable"];
+const STATUSES = ["confirmed","available","imported","hold","unavailable"];
+const STATUS_SORT_ORDER = { confirmed:0, available:1, imported:2, hold:3, unavailable:4 };
+const DIETARY_OPTIONS = ["","Vegetarian","Vegan","Gluten-free","Dairy-free","Nut-free","Halal","Kosher","Pescatarian","Other"];
 const fullName = (c) => c.firstName && c.lastName ? `${c.firstName} ${c.lastName}` : c.name || "";
 
 // CSV parser
@@ -52,7 +54,8 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
   const doSort = (col) => { if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortCol(col); setSortDir("asc"); } };
   const sortFn = (a, b) => {
     let va, vb;
-    if (sortCol === "name") { va = fullName(a).toLowerCase(); vb = fullName(b).toLowerCase(); }
+    if (sortCol === "name") { va = (a.lastName || "").toLowerCase(); vb = (b.lastName || "").toLowerCase(); if (va === vb) { va = (a.firstName || "").toLowerCase(); vb = (b.firstName || "").toLowerCase(); } }
+    else if (sortCol === "status") { va = STATUS_SORT_ORDER[a.status] ?? 99; vb = STATUS_SORT_ORDER[b.status] ?? 99; return sortDir === "asc" ? va - vb : vb - va; }
     else { va = (a[sortCol] || "").toString().toLowerCase(); vb = (b[sortCol] || "").toString().toLowerCase(); }
     return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
   };
@@ -76,14 +79,16 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
 
   const openNC = () => { setForm({ firstName:"", lastName:"", dept:"Camera", role:"", phone:"", email:"", worker:"intern", status:"available", notes:"", address:"", hotel:"", dietary:"" }); setEditModal("nC"); };
   const saveC = () => {
-    const obj = { ...form, name: `${form.firstName||""} ${form.lastName||""}`.trim() };
+    const { _dietaryCustom, ...rest } = form;
+    const obj = { ...rest, name: `${rest.firstName||""} ${rest.lastName||""}`.trim() };
     if (editModal === "nC") setCrew(p => [...p, { ...obj, id:"c"+Date.now() }]);
     else setCrew(p => p.map(c => c.id === obj.id ? obj : c));
     setEditModal(null);
   };
   const openNA = () => { setForm({ firstName:"", lastName:"", roleNum:`#${cast.length+1}`, roleName:"", phone:"", email:"", address:"", hotel:"", dietary:"", status:"available", notes:"" }); setEditModal("nA"); };
   const saveA = () => {
-    const obj = { ...form, name: `${form.firstName||""} ${form.lastName||""}`.trim() };
+    const { _dietaryCustom, ...rest } = form;
+    const obj = { ...rest, name: `${rest.firstName||""} ${rest.lastName||""}`.trim() };
     if (editModal === "nA") setCast(p => [...p, { ...obj, id:Date.now() }]);
     else setCast(p => p.map(c => c.id === obj.id ? obj : c));
     setEditModal(null);
@@ -113,8 +118,8 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
     if (!csvData) return;
     const items = csvData.rows.map(r => {
       const obj = {}; for (const [field, idx] of Object.entries(colMapping)) { obj[field] = r[idx] || ""; }
-      if (tab === "crew") return { id:"c"+Date.now()+Math.random(), firstName:obj.firstname||"", lastName:obj.lastname||"", name:`${obj.firstname||""} ${obj.lastname||""}`.trim(), dept:obj.dept||"Camera", role:obj.role||"", phone:obj.phone||"", email:obj.email||"", address:obj.address||"", hotel:obj.hotel||"", worker:obj.worker||"intern", status:obj.status||"available", dietary:obj.dietary||"", notes:obj.notes||"" };
-      else return { id:Date.now()+Math.random(), firstName:obj.firstname||"", lastName:obj.lastname||"", name:`${obj.firstname||""} ${obj.lastname||""}`.trim(), roleNum:obj.rolenum||`#${cast.length+1}`, roleName:obj.rolename||"", phone:obj.phone||"", email:obj.email||"", address:obj.address||"", hotel:obj.hotel||"", status:obj.status||"available", dietary:obj.dietary||"", notes:obj.notes||"" };
+      if (tab === "crew") return { id:"c"+Date.now()+Math.random(), firstName:obj.firstname||"", lastName:obj.lastname||"", name:`${obj.firstname||""} ${obj.lastname||""}`.trim(), dept:obj.dept||"Camera", role:obj.role||"", phone:obj.phone||"", email:obj.email||"", address:obj.address||"", hotel:obj.hotel||"", worker:obj.worker||"intern", status:"imported", dietary:obj.dietary||"", notes:obj.notes||"" };
+      else return { id:Date.now()+Math.random(), firstName:obj.firstname||"", lastName:obj.lastname||"", name:`${obj.firstname||""} ${obj.lastname||""}`.trim(), roleNum:obj.rolenum||`#${cast.length+1}`, roleName:obj.rolename||"", phone:obj.phone||"", email:obj.email||"", address:obj.address||"", hotel:obj.hotel||"", status:"imported", dietary:obj.dietary||"", notes:obj.notes||"" };
     }).filter(x => x.firstName || x.lastName || x.name);
     if (tab === "crew") setCrew(p => [...p, ...items]); else setCast(p => [...p, ...items]);
     setImportModal(false); setCsvData(null); setColMapping({}); setImportPreview([]);
@@ -137,15 +142,17 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
     </div>
 
     {tab==="crew"&&<div style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:10,overflow:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:1000}}>
         <thead><tr>
           <th onClick={()=>doSort("name")} style={TH}>Name<SortIcon col="name"/></th>
           <th onClick={()=>doSort("dept")} style={TH}>Dept<SortIcon col="dept"/></th>
           <th onClick={()=>doSort("role")} style={TH}>Role<SortIcon col="role"/></th>
-          <th style={TH}>Phone</th>
+          <th onClick={()=>doSort("phone")} style={TH}>Phone<SortIcon col="phone"/></th>
           <th onClick={()=>doSort("status")} style={TH}>Status<SortIcon col="status"/></th>
           <th onClick={()=>doSort("worker")} style={TH}>Type<SortIcon col="worker"/></th>
-          <th style={TH}>Dietary</th>
+          <th onClick={()=>doSort("address")} style={TH}>Address<SortIcon col="address"/></th>
+          <th onClick={()=>doSort("hotel")} style={TH}>Hotel<SortIcon col="hotel"/></th>
+          <th onClick={()=>doSort("dietary")} style={TH}>Dietary<SortIcon col="dietary"/></th>
         </tr></thead>
         <tbody>{fCrew.map(c=><tr key={c.id} onClick={()=>openEdit(c,"eC")} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#1e2128"} onMouseLeave={e=>e.currentTarget.style.background=""}>
           <td style={{...TD,fontWeight:600,color:"#f0f0f0"}}>{fullName(c)}</td>
@@ -154,8 +161,10 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
           <td style={{...TD,color:"#888"}}>{c.phone}</td>
           <td style={TD}><StatusBadge status={c.status}/></td>
           <td style={TD}><span style={{fontSize:10,fontWeight:600,color:(c.worker||"intern")==="extern"?"#f59e0b":"#22c55e",background:(c.worker||"intern")==="extern"?"#f59e0b18":"#22c55e18",padding:"2px 6px",borderRadius:3,textTransform:"uppercase"}}>{c.worker||"intern"}</span></td>
+          <td style={{...TD,fontSize:11,color:"#888",maxWidth:160}} title={c.address||""}>{c.address||"\u2014"}</td>
+          <td style={{...TD,fontSize:11,color:"#888",maxWidth:140}} title={c.hotel||""}>{c.hotel||"\u2014"}</td>
           <td style={{...TD,fontSize:11,color:"#f59e0b"}}>{c.dietary||""}</td>
-        </tr>)}{fCrew.length===0&&<tr><td colSpan={7} style={{...TD,textAlign:"center",color:"#555",padding:30}}>No crew found</td></tr>}</tbody>
+        </tr>)}{fCrew.length===0&&<tr><td colSpan={9} style={{...TD,textAlign:"center",color:"#555",padding:30}}>No crew found</td></tr>}</tbody>
       </table>
     </div>}
 
@@ -165,10 +174,10 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
           <th onClick={()=>doSort("roleNum")} style={{...TH,width:50}}>#<SortIcon col="roleNum"/></th>
           <th onClick={()=>doSort("name")} style={TH}>Name<SortIcon col="name"/></th>
           <th onClick={()=>doSort("roleName")} style={TH}>Character<SortIcon col="roleName"/></th>
-          <th style={TH}>Phone</th>
+          <th onClick={()=>doSort("phone")} style={TH}>Phone<SortIcon col="phone"/></th>
           <th onClick={()=>doSort("status")} style={TH}>Status<SortIcon col="status"/></th>
-          <th style={TH}>Hotel</th>
-          <th style={TH}>Dietary</th>
+          <th onClick={()=>doSort("hotel")} style={TH}>Hotel<SortIcon col="hotel"/></th>
+          <th onClick={()=>doSort("dietary")} style={TH}>Dietary<SortIcon col="dietary"/></th>
         </tr></thead>
         <tbody>{fCast.map(c=><tr key={c.id} onClick={()=>openEdit(c,"eA")} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#1e2128"} onMouseLeave={e=>e.currentTarget.style.background=""}>
           <td style={{...TD,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
@@ -194,7 +203,7 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
         <div><label style={LS}>Worker Type</label><select value={form.worker||"intern"} onChange={e=>setForm({...form,worker:e.target.value})} style={IS}><option value="intern">Intern</option><option value="extern">Extern</option></select></div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Address</label><AddressInput value={form.address} onChange={v=>setForm({...form,address:v})}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Hotel / 2nd Address</label><AddressInput value={form.hotel} onChange={v=>setForm({...form,hotel:v})} placeholder="Hotel or second address..."/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={LS}>Dietary Restrictions</label><input value={form.dietary||""} onChange={e=>setForm({...form,dietary:e.target.value})} style={IS}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={LS}>Dietary Restrictions</label>{form._dietaryCustom?<div style={{display:"flex",gap:6}}><input value={form.dietary||""} onChange={e=>setForm({...form,dietary:e.target.value})} style={{...IS,flex:1}} placeholder="Type custom dietary..."/><button onClick={()=>setForm({...form,_dietaryCustom:false})} style={{...IS,width:"auto",padding:"0 10px",cursor:"pointer",color:"#E8C94A",background:"#E8C94A18",border:"1px solid #E8C94A44",borderRadius:6,fontSize:11}}>List</button></div>:<div style={{display:"flex",gap:6}}><select value={DIETARY_OPTIONS.includes(form.dietary)?form.dietary:"Other"} onChange={e=>{const v=e.target.value;if(v==="Other")setForm({...form,dietary:form.dietary||"",_dietaryCustom:true});else setForm({...form,dietary:v});}} style={{...IS,flex:1,cursor:"pointer"}}>{DIETARY_OPTIONS.map(d=><option key={d} value={d}>{d||"— None —"}</option>)}{form.dietary&&!DIETARY_OPTIONS.includes(form.dietary)&&<option value={form.dietary}>{form.dietary}</option>}</select>{form.dietary&&!DIETARY_OPTIONS.includes(form.dietary)&&<button onClick={()=>setForm({...form,_dietaryCustom:true})} style={{...IS,width:"auto",padding:"0 10px",cursor:"pointer",color:"#E8C94A",background:"#E8C94A18",border:"1px solid #E8C94A44",borderRadius:6,fontSize:11}}>Edit</button>}</div>}</div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Notes</label><textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
       </div>
       {form.dept==="Driver"&&<div style={{marginTop:12,padding:10,background:"#3b82f618",border:"1px solid #3b82f633",borderRadius:6,fontSize:12,color:"#3b82f6"}}>Driver — visible in Transport and assignable to vehicles.</div>}
@@ -211,7 +220,7 @@ const PeopleModule = ({ crew, setCrew, cast, setCast }) => {
         <div><label style={LS}>Email</label><input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} style={IS}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Address</label><AddressInput value={form.address} onChange={v=>setForm({...form,address:v})}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Hotel</label><AddressInput value={form.hotel} onChange={v=>setForm({...form,hotel:v})} placeholder="Hotel address..."/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={LS}>Dietary Restrictions</label><input value={form.dietary||""} onChange={e=>setForm({...form,dietary:e.target.value})} style={IS}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={LS}>Dietary Restrictions</label>{form._dietaryCustom?<div style={{display:"flex",gap:6}}><input value={form.dietary||""} onChange={e=>setForm({...form,dietary:e.target.value})} style={{...IS,flex:1}} placeholder="Type custom dietary..."/><button onClick={()=>setForm({...form,_dietaryCustom:false})} style={{...IS,width:"auto",padding:"0 10px",cursor:"pointer",color:"#E8C94A",background:"#E8C94A18",border:"1px solid #E8C94A44",borderRadius:6,fontSize:11}}>List</button></div>:<div style={{display:"flex",gap:6}}><select value={DIETARY_OPTIONS.includes(form.dietary)?form.dietary:"Other"} onChange={e=>{const v=e.target.value;if(v==="Other")setForm({...form,dietary:form.dietary||"",_dietaryCustom:true});else setForm({...form,dietary:v});}} style={{...IS,flex:1,cursor:"pointer"}}>{DIETARY_OPTIONS.map(d=><option key={d} value={d}>{d||"— None —"}</option>)}{form.dietary&&!DIETARY_OPTIONS.includes(form.dietary)&&<option value={form.dietary}>{form.dietary}</option>}</select>{form.dietary&&!DIETARY_OPTIONS.includes(form.dietary)&&<button onClick={()=>setForm({...form,_dietaryCustom:true})} style={{...IS,width:"auto",padding:"0 10px",cursor:"pointer",color:"#E8C94A",background:"#E8C94A18",border:"1px solid #E8C94A44",borderRadius:6,fontSize:11}}>Edit</button>}</div>}</div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Notes</label><textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editModal==="eA"&&<button onClick={()=>{setCast(p=>p.filter(c=>c.id!==form.id));setEditModal(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditModal(null)} style={BS}>Cancel</button><button onClick={saveA} style={BP}>Save</button></div></div>
