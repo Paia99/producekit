@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { VEHICLE_TYPES, fmtTime, fmtDate, toKm, I, StatusBadge, TrafficBadge, Modal, IS, LS, BP, BS, BD, callRouteOptimize, AddressInput } from "./config.jsx";
+import { VEHICLE_TYPES, fmtTime, fmtDate, toKm, addMin, I, StatusBadge, TrafficBadge, Modal, IS, LS, BP, BS, BD, callRouteOptimize, AddressInput } from "./config.jsx";
 
 const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strips, crew, cast, locations }) => {
   const [selDay,setSelDay]=useState(days[0]?.id||"");const [viewMode,setViewMode]=useState("routes");
   const [editRoute,setEditRoute]=useState(null);const [editVeh,setEditVeh]=useState(null);
   const [rf,setRf]=useState({});const [vf,setVf]=useState({});
   const [calc,setCalc]=useState(null);const [calcErr,setCalcErr]=useState("");const [dispPrev,setDispPrev]=useState(null);
+  const [editTpl,setEditTpl]=useState(false);
+  const [travellerTpl,setTravellerTpl]=useState(()=>{try{const s=localStorage.getItem("pk_tpl_traveller");if(s)return s;}catch(e){}return"Hi {name}, your pickup is at {time} from {address}. Set call: {callTime}. Be ready 5 min early.";});
+  const [driverTpl,setDriverTpl]=useState(()=>{try{const s=localStorage.getItem("pk_tpl_driver");if(s)return s;}catch(e){}return"Route: {routeLabel}\nDepart: {departTime}\n{stopsList}\n> {callTime} ARRIVE {destination}\n\nMaps: {mapsUrl}";});
+  const saveTpl=()=>{try{localStorage.setItem("pk_tpl_traveller",travellerTpl);localStorage.setItem("pk_tpl_driver",driverTpl);}catch(e){}setEditTpl(false);};
   const day=days.find(d=>d.id===selDay);const dayR=routes.filter(r=>r.dayId===selDay);
   const allP=[...cast.map(c=>({id:c.id,type:"cast",name:c.name,role:c.roleName||"",address:c.hotel||c.address})),...crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver").map(c=>({id:c.id,type:"crew",name:c.name,role:`${c.dept} — ${c.role}`,address:c.address}))];
   const gPN=s=>s.personType==="cast"?cast.find(c=>String(c.id)===String(s.personId))?.name||"—":crew.find(c=>c.id===s.personId)?.name||"—";
@@ -47,8 +51,14 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   const showDispatch=(route)=>{
     const v=vehicles.find(x=>x.id===route.vehicleId);const drv=crew.find(c=>c.id===v?.driverId);
     const pk=route.stops.filter(s=>s.type==="pickup");const dest=route.stops.find(s=>s.type==="destination");const dLoc=locations.find(l=>l.id===dest?.locationId);
-    const msgs=pk.map(s=>({to:gPN(s),msg:`Hi ${gPN(s)}, pickup at ${fmtTime(s.pickupTime)} from ${s.address}. Call: ${fmtTime(dest?.arrivalTime)}. Be ready 5 min early.`}));
-    const dMsg=drv?{to:drv.name+" (Driver)",msg:`Route: ${route.label}\nDepart: ${fmtTime(route.driverDepart||"?")}\n${pk.map(s=>`> ${fmtTime(s.pickupTime)} ${gPN(s)} — ${s.address}`).join("\n")}\n> ${fmtTime(dest?.arrivalTime)} ARRIVE ${dLoc?.name||dest?.address}\n\nMaps: ${route.gmapsUrl||"N/A"}`}:null;
+    const callTime=fmtTime(dest?.arrivalTime);
+    const msgs=pk.map(s=>{
+      const name=gPN(s);
+      let msg=travellerTpl.replace(/\{name\}/g,name).replace(/\{time\}/g,fmtTime(s.pickupTime)).replace(/\{address\}/g,s.address||"").replace(/\{callTime\}/g,callTime);
+      return{to:name,msg};
+    });
+    const stopsList=pk.map(s=>`> ${fmtTime(s.pickupTime)} ${gPN(s)} — ${s.address}`).join("\n");
+    const dMsg=drv?{to:drv.name+" (Driver)",msg:driverTpl.replace(/\{routeLabel\}/g,route.label).replace(/\{departTime\}/g,fmtTime(route.driverDepart||"?")).replace(/\{stopsList\}/g,stopsList).replace(/\{callTime\}/g,callTime).replace(/\{destination\}/g,dLoc?.name||dest?.address||"").replace(/\{mapsUrl\}/g,route.gmapsUrl||"N/A")}:null;
     setDispPrev({route,msgs,dMsg});
   };
 
@@ -62,7 +72,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
       <div><h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Transport</h2><p style={{margin:"4px 0 0",color:"#888",fontSize:13}}>{vehicles.length} vehicles · {drivers.length} drivers · {routes.length} routes</p></div>
-      <div style={{display:"flex",gap:8}}>{viewMode==="routes"&&<button onClick={openNR} style={BP}><span style={{display:"flex",alignItems:"center",gap:5}}><I.Plus/> Route</span></button>}{viewMode==="fleet"&&<button onClick={openNV} style={BP}><span style={{display:"flex",alignItems:"center",gap:5}}><I.Plus/> Vehicle</span></button>}</div>
+      <div style={{display:"flex",gap:8}}>{viewMode==="routes"&&<><button onClick={()=>setEditTpl(true)} style={{...BS,fontSize:11}}><I.Edit/> Templates</button><button onClick={openNR} style={BP}><span style={{display:"flex",alignItems:"center",gap:5}}><I.Plus/> Route</span></button></>}{viewMode==="fleet"&&<button onClick={openNV} style={BP}><span style={{display:"flex",alignItems:"center",gap:5}}><I.Plus/> Vehicle</span></button>}</div>
     </div>
     <div style={{display:"flex",gap:4,marginBottom:16}}>
       {[{id:"routes",l:"Routes"},{id:"fleet",l:`Fleet (${vehicles.length})`},{id:"drivers",l:`Drivers (${drivers.length})`}].map(t=><button key={t.id} onClick={()=>setViewMode(t.id)} style={{padding:"7px 16px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:viewMode===t.id?"#E8C94A18":"transparent",border:`1px solid ${viewMode===t.id?"#E8C94A44":"#2a2d35"}`,color:viewMode===t.id?"#E8C94A":"#888"}}>{t.l}</button>)}
@@ -78,6 +88,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>calcRoute(route)} disabled={calc===route.id} style={{...BS,padding:"6px 12px",fontSize:11}}>{calc===route.id?<><I.Loader/> Calculating...</>:<><I.Route/> Calculate Route</>}</button>
             {route.optimized&&<button onClick={()=>showDispatch(route)} style={{...BS,padding:"6px 12px",fontSize:11,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/> Dispatch</button>}
+            <button onClick={()=>{const dest=route.stops.find(s=>s.type==="destination");const arrT=dest?.arrivalTime||day?.callTime||"06:00";const turnaround=route.totalDrive?route.totalDrive+15:45;const newRun={runLabel:`Trip ${(route.runs||[]).length+2}`,stops:[{type:"destination",locationId:dest?.locationId||"",address:dest?.address||"",arrivalTime:addMin(arrT,turnaround),estDrive:0}],optimized:false,totalDrive:null,totalDistance:null};setRoutes(p=>p.map(r=>r.id===route.id?{...r,runs:[...(r.runs||[]),newRun]}:r));}} style={{...BS,padding:"6px 12px",fontSize:11}} title="Add another trip with this vehicle"><I.Plus/> Run</button>
             <button onClick={()=>{setRf({...route,stops:route.stops.map(s=>({...s}))});setEditRoute(route);}} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
             <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==route.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:4}}><I.Trash/></button>
           </div>
@@ -107,6 +118,28 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             </div>}
           </div>
           {route.gmapsUrl&&<a href={route.gmapsUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:10,fontSize:11,color:"#3b82f6",textDecoration:"none"}}>Open in Google Maps <I.ExternalLink/></a>}
+          {/* Additional Runs */}
+          {route.runs&&route.runs.length>0&&route.runs.map((run,ri)=>{const rDest=run.stops.find(s=>s.type==="destination");const rPk=run.stops.filter(s=>s.type==="pickup");const rDLoc=locations.find(l=>l.id===rDest?.locationId);
+          return<div key={ri} style={{marginTop:14,paddingTop:14,borderTop:"1px dashed #333"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{run.runLabel||`Trip ${ri+2}`}</span>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{const newRuns=[...(route.runs||[])];const r=newRuns[ri];const newStops=[...r.stops];const di=newStops.findIndex(x=>x.type==="destination");newStops.splice(di,0,{type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15});newRuns[ri]={...r,stops:newStops};setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Plus/> Stop</button>
+                <button onClick={()=>{const newRuns=(route.runs||[]).filter((_,j)=>j!==ri);setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
+              </div>
+            </div>
+            {rPk.length===0&&<div style={{fontSize:11,color:"#555",fontStyle:"italic",marginBottom:6}}>No pickups yet — add stops above</div>}
+            {rPk.map((s,si)=><div key={si} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",background:"#12141a",borderRadius:6,border:"1px solid #1e2028",marginBottom:4}}>
+              <span style={{width:18,height:18,borderRadius:"50%",background:"#f59e0b18",color:"#f59e0b",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{si+1}</span>
+              <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}</div><div style={{fontSize:10,color:"#888"}}>{s.address}</div></div>
+              {s.pickupTime&&<span style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{fmtTime(s.pickupTime)}</span>}
+            </div>)}
+            {rDest&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",background:"#22c55e08",borderRadius:6,border:"1px solid #22c55e22"}}>
+              <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{"\u2713"}</span>
+              <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#22c55e"}}>ARRIVE — {rDLoc?.name||rDest.address}</div></div>
+              <span style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>{fmtTime(rDest.arrivalTime)}</span>
+            </div>}
+          </div>;})}
         </div>
       </div>;})}
     </div>}
@@ -161,20 +194,27 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       </div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editVeh!=="new"&&<button onClick={()=>{setVehicles(p=>p.filter(v=>v.id!==vf.id));setEditVeh(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditVeh(null)} style={BS}>Cancel</button><button onClick={saveV} style={BP}>Save</button></div></div>
     </Modal>}
-    {/* Dispatch Preview Modal */}
+    {/* Dispatch Preview Modal — editable messages */}
     {dispPrev&&<Modal title="Dispatch Preview (Test Mode)" onClose={()=>setDispPrev(null)} width={600}>
-      <div style={{padding:10,background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,marginBottom:16,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> TEST MODE — No messages will be sent. This shows what would be dispatched.</div>
+      <div style={{padding:10,background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,marginBottom:16,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> TEST MODE — No messages will be sent. Edit messages below before dispatching.</div>
       <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Traveller Messages</h4>
       {dispPrev.msgs.map((m,i)=><div key={i} style={{background:"#12141a",border:"1px solid #2a2d35",borderRadius:6,padding:12,marginBottom:8}}>
         <div style={{fontSize:11,fontWeight:700,color:"#E8C94A",marginBottom:4}}>To: {m.to}</div>
-        <div style={{fontSize:12,color:"#ddd",whiteSpace:"pre-wrap"}}>{m.msg}</div>
+        <textarea value={m.msg} onChange={e=>{const nm=[...dispPrev.msgs];nm[i]={...nm[i],msg:e.target.value};setDispPrev({...dispPrev,msgs:nm});}} rows={3} style={{...IS,resize:"vertical",fontSize:12}}/>
       </div>)}
       {dispPrev.dMsg&&<><h4 style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Driver Message</h4>
         <div style={{background:"#12141a",border:"1px solid #3b82f633",borderRadius:6,padding:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:4}}>To: {dispPrev.dMsg.to}</div>
-          <div style={{fontSize:12,color:"#ddd",whiteSpace:"pre-wrap",fontFamily:"monospace"}}>{dispPrev.dMsg.msg}</div>
+          <textarea value={dispPrev.dMsg.msg} onChange={e=>setDispPrev({...dispPrev,dMsg:{...dispPrev.dMsg,msg:e.target.value}})} rows={8} style={{...IS,resize:"vertical",fontSize:12,fontFamily:"monospace"}}/>
         </div></>}
       <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:20}}><button onClick={()=>{setRoutes(p=>p.map(r=>r.id===dispPrev.route.id?{...r,status:"dispatched"}:r));setDispPrev(null);}} style={{...BP,background:"#3b82f6",color:"#fff"}}><I.Send/> Mark as Dispatched</button><button onClick={()=>setDispPrev(null)} style={BS}>Close</button></div>
+    </Modal>}
+    {/* Template Editor Modal */}
+    {editTpl&&<Modal title="Dispatch Message Templates" onClose={()=>setEditTpl(false)} width={600}>
+      <p style={{fontSize:12,color:"#888",marginBottom:16}}>Customize the default messages. Variables: <span style={{color:"#E8C94A",fontFamily:"monospace"}}>{"{name}"} {"{time}"} {"{address}"} {"{callTime}"}</span> for travellers, <span style={{color:"#3b82f6",fontFamily:"monospace"}}>{"{routeLabel}"} {"{departTime}"} {"{stopsList}"} {"{callTime}"} {"{destination}"} {"{mapsUrl}"}</span> for driver.</p>
+      <div style={{marginBottom:16}}><label style={LS}>Traveller Message Template</label><textarea value={travellerTpl} onChange={e=>setTravellerTpl(e.target.value)} rows={4} style={{...IS,resize:"vertical",fontSize:12}}/></div>
+      <div style={{marginBottom:16}}><label style={LS}>Driver Message Template</label><textarea value={driverTpl} onChange={e=>setDriverTpl(e.target.value)} rows={6} style={{...IS,resize:"vertical",fontSize:12,fontFamily:"monospace"}}/></div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setEditTpl(false)} style={BS}>Cancel</button><button onClick={saveTpl} style={BP}>Save Templates</button></div>
     </Modal>}
   </div>;
 };
