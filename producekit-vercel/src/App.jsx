@@ -8,6 +8,7 @@ import { LocationsModule } from "./Locations.jsx";
 import { TransportModule } from "./Transport.jsx";
 import { CallSheetModule } from "./CallSheet.jsx";
 import { ProjectSetup } from "./ProjectSetup.jsx";
+import { CalendarModule } from "./Calendar.jsx";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: I.Dashboard },
@@ -16,6 +17,7 @@ const NAV = [
   { id: "locations", label: "Locations", icon: I.Location },
   { id: "transport", label: "Transport", icon: I.Transport },
   { id: "callsheet", label: "Call Sheet", icon: I.CallSheet },
+  { id: "calendar", label: "Calendar", icon: I.Calendar },
   { id: "project", label: "Project", icon: I.Settings },
 ];
 
@@ -71,6 +73,7 @@ export default function App() {
         {tab === "locations" && <LocationsModule locations={project.locations} setLocations={v => up("locations", v)} strips={project.strips} />}
         {tab === "transport" && <TransportModule vehicles={project.vehicles} setVehicles={v => up("vehicles", v)} routes={project.routes} setRoutes={v => up("routes", v)} days={project.days} strips={project.strips} crew={project.crew} cast={project.cast} locations={project.locations} />}
         {tab === "callsheet" && <CallSheetModule project={project} />}
+        {tab === "calendar" && <CalendarModule schedule={project.schedule || {}} setSchedule={v => up("schedule", v)} shootingDays={project.shootingDays} />}
         {tab === "project" && <ProjectSetup projects={projects} setProjects={setProjects} activeId={activeProjectId} setActiveId={setActiveProjectId} />}
       </main>
     </div>

@@ -1,7 +1,7 @@
 // ─── DEFAULT PROJECT DATA ────────────────────────────────────
 const defaultProject = () => ({
-  id: "p" + Date.now(), name: "The Letter", production: "Meridian Films", shootingDays: 20,
-  keyRoles: { Director:"Anna Novak", Producer:"J. Hartwell", "Exec Producer":"M. Stone", "Line Producer":"K. Voss", UPM:"R. Tanaka", DOP:"Sarah Chen", "1st AD":"Ava Petrov" },
+  id: "p" + Date.now(), name: "The Letter", production: "Meridian Films", shootingDays: 20, idec: "",
+  keyRoles: { Director:"Anna Novak", Producer:"J. Hartwell", "Exec Producer":"M. Stone", "Line Producer":"K. Voss", UPM:"R. Tanaka", DOP:"Sarah Chen", "1st AD":"Ava Petrov", Sound:"James Okafor" },
   crew: [
     { id:"c1", firstName:"Sarah", lastName:"Chen", name:"Sarah Chen", dept:"Camera", role:"DOP", phone:"+420 555 0101", email:"sarah@prod.com", worker:"intern", status:"confirmed", notes:"", address:"14 Oak Lane, Prague 5", hotel:"", dietary:"" },
     { id:"c2", firstName:"Mike", lastName:"Torres", name:"Mike Torres", dept:"Grip", role:"Key Grip", phone:"+420 555 0102", email:"mike@prod.com", worker:"intern", status:"confirmed", notes:"", address:"88 Vine St, Prague 3", hotel:"", dietary:"" },
@@ -68,6 +68,13 @@ const defaultProject = () => ({
         { type:"destination", locationId:"loc8", address:"Barrandov Terraces, Prague 5", arrivalTime:"05:50", estDrive:0 },
       ], notes:"", status:"confirmed", optimized:false, demo:false, gmapsUrl:"", totalDrive:null, totalDistance:null, trafficSummary:"" },
   ],
+  schedule: {
+    "2026-03-01": "prep",
+    "2026-03-02": "shoot",
+    "2026-03-03": "shoot",
+    "2026-03-04": "shoot",
+    "2026-03-05": "shoot",
+  },
 });
 
 export { defaultProject };
