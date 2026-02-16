@@ -18,7 +18,7 @@ const CallSheetModule = ({ project }) => {
           <div><div style={{fontSize:20,fontWeight:800,color:"#E8C94A"}}>{project.name}</div><div style={{fontSize:13,color:"#888"}}>{project.production}</div>
             {project.keyRoles&&<div style={{fontSize:11,color:"#666",marginTop:4}}>{KEY_ROLES.filter(r=>project.keyRoles[r]).map(r=>`${r}: ${project.keyRoles[r]}`).join(" · ")}</div>}
           </div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800,color:"#f0f0f0"}}>{day.label}</div><div style={{fontSize:13,color:"#888"}}>{fmtDate(day.date)}</div><div style={{fontSize:16,fontWeight:800,color:"#E8C94A",marginTop:4}}>CALL: {fmtTime(day.callTime)}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800,color:"#f0f0f0"}}>{day.label}</div><div style={{fontSize:13,color:"#888"}}>{fmtDate(day.date)}</div><div style={{fontSize:16,fontWeight:800,color:"#E8C94A",marginTop:4}}>{fmtTime(day.callTime)}–{fmtTime(day.wrapTime || "18:00")}</div></div>
         </div>
       </div>
       <div style={{padding:20}}>

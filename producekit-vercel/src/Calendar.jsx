@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { I, fmtDate, Modal, IS, LS, BP, BS } from "./config.jsx";
+import { I, fmtDate, addMin, Modal, IS, LS, BP, BS } from "./config.jsx";
 
 const DAY_TYPES = ["","shoot","prep","rehearsal","dayoff","travel","wrap"];
 const DAY_LABELS = { shoot:"Shoot", prep:"Prep", rehearsal:"Rehearsal", dayoff:"Day Off", travel:"Travel", wrap:"Wrap" };
@@ -16,9 +16,9 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     if (dates.length) { const [y,m] = dates[0].split("-"); return { year:parseInt(y), month:parseInt(m)-1 }; }
     const now = new Date(); return { year:now.getFullYear(), month:now.getMonth() };
   });
-  const [confirmRemove, setConfirmRemove] = useState(null); // { dateKey, scenesCount }
-  const [editCallTime, setEditCallTime] = useState(null); // dateKey
-  const [callTimeVal, setCallTimeVal] = useState("06:00");
+  const [confirmRemove, setConfirmRemove] = useState(null);
+  const [editDayModal, setEditDayModal] = useState(null); // dateKey
+  const [dayForm, setDayForm] = useState({ callTime:"06:00", wrapTime:"18:00" });
 
   const sched = schedule || {};
 
@@ -50,15 +50,16 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     let updatedDays = [...days];
 
     // Add day entries for new shoot dates
-    newShootDates.forEach((date, idx) => {
+    newShootDates.forEach((date) => {
       const existing = updatedDays.find(d => d.date === date);
       if (!existing) {
         updatedDays.push({
           id: "d" + Date.now() + Math.random(),
-          label: "", // will be recomputed
+          label: "",
           date: date,
           strips: [],
           callTime: "06:00",
+          wrapTime: "18:00",
         });
       }
     });
@@ -79,18 +80,28 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     return day ? day.strips.length : 0;
   };
 
-  // Get call time for a date
-  const getCallTime = (dateKey) => {
-    const day = days.find(d => d.date === dateKey);
-    return day?.callTime || "06:00";
-  };
+  // Get day data for a date
+  const getDayData = (dateKey) => days.find(d => d.date === dateKey);
 
-  const cycleDay = (dateKey) => {
+  const handleCellClick = (dateKey) => {
     const cur = sched[dateKey] || "";
+
+    // If it's already a shoot day, open edit modal instead of cycling
+    if (cur === "shoot") {
+      const dayData = getDayData(dateKey);
+      setDayForm({
+        callTime: dayData?.callTime || "06:00",
+        wrapTime: dayData?.wrapTime || "18:00",
+      });
+      setEditDayModal(dateKey);
+      return;
+    }
+
+    // Otherwise cycle to next type
     const idx = DAY_TYPES.indexOf(cur);
     const next = DAY_TYPES[(idx + 1) % DAY_TYPES.length];
 
-    // If removing a shoot day, check for assigned scenes
+    // If removing a type that was shoot (shouldn't happen here, but safety)
     if (cur === "shoot" && next !== "shoot") {
       const sc = scenesOnDate(dateKey);
       if (sc > 0) {
@@ -114,6 +125,18 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     syncDays(newSchedule);
   };
 
+  // Remove shoot day from edit modal (cycle to next type)
+  const removeShootDay = (dateKey) => {
+    const sc = scenesOnDate(dateKey);
+    if (sc > 0) {
+      setEditDayModal(null);
+      setConfirmRemove({ dateKey, scenesCount: sc, nextType: "prep" });
+      return;
+    }
+    setEditDayModal(null);
+    applyDayChange(dateKey, "prep");
+  };
+
   const confirmRemoveDay = () => {
     if (!confirmRemove) return;
     const { dateKey, nextType } = confirmRemove;
@@ -121,15 +144,14 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     setConfirmRemove(null);
   };
 
-  const openCallTimeEdit = (dateKey, e) => {
-    e.stopPropagation();
-    setCallTimeVal(getCallTime(dateKey));
-    setEditCallTime(dateKey);
-  };
-
-  const saveCallTime = () => {
-    setDays(prev => prev.map(d => d.date === editCallTime ? { ...d, callTime: callTimeVal } : d));
-    setEditCallTime(null);
+  const saveEditDay = () => {
+    if (!editDayModal) return;
+    setDays(prev => prev.map(d => d.date === editDayModal ? {
+      ...d,
+      callTime: dayForm.callTime,
+      wrapTime: dayForm.wrapTime,
+    } : d));
+    setEditDayModal(null);
   };
 
   // Build calendar grid
@@ -158,7 +180,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
           {DAY_LABELS[t]}
         </div>
       ))}
-      <div style={{fontSize:11,color:"#555",marginLeft:8}}>Click to cycle type \u00B7 Click time to edit call</div>
+      <div style={{fontSize:11,color:"#555",marginLeft:8}}>Click to set type \u00B7 Click shoot day to edit shift</div>
     </div>
 
     {/* Month navigation */}
@@ -177,18 +199,20 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
         {cells.map((day, i) => {
-          if (day === null) return <div key={`e${i}`} style={{minHeight:80,background:"#12141a",borderRight:i%7!==6?"1px solid #1e2028":"none",borderBottom:"1px solid #1e2028"}}/>;
+          if (day === null) return <div key={`e${i}`} style={{minHeight:82,background:"#12141a",borderRight:i%7!==6?"1px solid #1e2028":"none",borderBottom:"1px solid #1e2028"}}/>;
           const dateKey = toKey(year, month, day);
           const type = sched[dateKey] || "";
           const isToday = dateKey === todayKey;
           const isWeekend = i % 7 >= 5;
           const isShoot = type === "shoot";
-          const dayScenes = scenesOnDate(dateKey);
-          const callTime = isShoot ? getCallTime(dateKey) : null;
+          const dayData = isShoot ? getDayData(dateKey) : null;
+          const dayScenes = isShoot ? scenesOnDate(dateKey) : 0;
+          const callTime = dayData?.callTime || "06:00";
+          const wrapTime = dayData?.wrapTime || "18:00";
 
           return (
-            <div key={dateKey} onClick={() => cycleDay(dateKey)} style={{
-              minHeight:80, padding:"6px 8px", cursor:"pointer",
+            <div key={dateKey} onClick={() => handleCellClick(dateKey)} style={{
+              minHeight:82, padding:"6px 8px", cursor:"pointer",
               background: type ? DAY_BG[type] : (isWeekend ? "#0e1015" : "transparent"),
               borderRight: i%7!==6 ? "1px solid #1e2028" : "none",
               borderBottom: "1px solid #1e2028",
@@ -216,9 +240,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
               )}
               {isShoot && (
                 <div style={{marginTop:3}}>
-                  <span onClick={(e) => openCallTimeEdit(dateKey, e)} style={{fontSize:9,color:"#888",cursor:"pointer",background:"#12141a",padding:"1px 4px",borderRadius:3,border:"1px solid #2a2d35"}} title="Edit call time">
-                    {callTime || "06:00"}
-                  </span>
+                  <span style={{fontSize:9,color:"#888"}}>{callTime}\u2013{wrapTime}</span>
                   {dayScenes > 0 && (
                     <span style={{fontSize:9,color:"#E8C94A",marginLeft:4}}>{dayScenes}sc</span>
                   )}
@@ -236,11 +258,13 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
         <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Shoot Days</h4>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {shootDates.map(d => {
+            const dd = getDayData(d);
             const sc = scenesOnDate(d);
-            const ct = getCallTime(d);
+            const ct = dd?.callTime || "06:00";
+            const wt = dd?.wrapTime || "18:00";
             return (
               <span key={d} style={{fontSize:11,fontWeight:600,color:"#22c55e",background:"#22c55e15",border:"1px solid #22c55e33",padding:"4px 10px",borderRadius:5}}>
-                Day {shootDayNum[d]} \u2014 {fmtDate(d)} \u00B7 {ct}{sc > 0 ? ` \u00B7 ${sc}sc` : ""}
+                Day {shootDayNum[d]} \u2014 {fmtDate(d)} \u00B7 {ct}\u2013{wt}{sc > 0 ? ` \u00B7 ${sc}sc` : ""}
               </span>
             );
           })}
@@ -261,6 +285,39 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
       </div>
     )}
 
+    {/* Edit shoot day modal */}
+    {editDayModal && <Modal title={`Edit Shoot Day ${shootDayNum[editDayModal] || ""} \u2014 ${fmtDate(editDayModal)}`} onClose={() => setEditDayModal(null)}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>
+          <label style={LS}>Call Time (start of day)</label>
+          <input type="time" value={dayForm.callTime} onChange={e => setDayForm({...dayForm, callTime: e.target.value})} style={IS}/>
+        </div>
+        <div>
+          <label style={LS}>Wrap Time (end of day)</label>
+          <input type="time" value={dayForm.wrapTime} onChange={e => setDayForm({...dayForm, wrapTime: e.target.value})} style={IS}/>
+        </div>
+      </div>
+      {dayForm.callTime && dayForm.wrapTime && <div style={{marginTop:12,fontSize:12,color:"#888"}}>
+        Shift: {dayForm.callTime}\u2013{dayForm.wrapTime}
+        {(() => {
+          const [ch,cm] = dayForm.callTime.split(":").map(Number);
+          const [wh,wm] = dayForm.wrapTime.split(":").map(Number);
+          let diff = (wh*60+wm) - (ch*60+cm);
+          if (diff <= 0) diff += 1440;
+          return ` (${Math.floor(diff/60)}h ${diff%60 > 0 ? diff%60+"m" : ""})`;
+        })()}
+      </div>}
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}>
+        <button onClick={() => removeShootDay(editDayModal)} style={{background:"none",border:"1px solid #ef444466",color:"#ef4444",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+          Change Day Type
+        </button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={() => setEditDayModal(null)} style={BS}>Cancel</button>
+          <button onClick={saveEditDay} style={BP}>Save</button>
+        </div>
+      </div>
+    </Modal>}
+
     {/* Confirm removal modal */}
     {confirmRemove && <Modal title="Remove Shoot Day?" onClose={() => setConfirmRemove(null)}>
       <p style={{fontSize:13,color:"#ccc",marginBottom:16}}>
@@ -270,18 +327,6 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
       <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
         <button onClick={() => setConfirmRemove(null)} style={BS}>Cancel</button>
         <button onClick={confirmRemoveDay} style={{...BP,background:"#ef4444",color:"#fff"}}>Remove &amp; Unassign</button>
-      </div>
-    </Modal>}
-
-    {/* Call time edit modal */}
-    {editCallTime && <Modal title={`Call Time \u2014 Day ${shootDayNum[editCallTime] || "?"}`} onClose={() => setEditCallTime(null)}>
-      <div style={{marginBottom:16}}>
-        <label style={LS}>Call Time</label>
-        <input type="time" value={callTimeVal} onChange={e => setCallTimeVal(e.target.value)} style={IS}/>
-      </div>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-        <button onClick={() => setEditCallTime(null)} style={BS}>Cancel</button>
-        <button onClick={saveCallTime} style={BP}>Save</button>
       </div>
     </Modal>}
   </div>;

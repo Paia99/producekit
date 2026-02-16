@@ -41,10 +41,10 @@ const defaultProject = () => ({
     { id:"s9", scene:"9", type:"D/EXT", locationId:"loc7", cast:[1,2], pages:1, synopsis:"Final scene - new beginning", startTime:"", endTime:"" },
   ],
   days: [
-    { id:"d1", label:"Day 1", date:"2026-03-02", strips:["s1","s7"], callTime:"06:00" },
-    { id:"d2", label:"Day 2", date:"2026-03-03", strips:["s2","s6","s9"], callTime:"07:00" },
-    { id:"d3", label:"Day 3", date:"2026-03-04", strips:["s3","s5"], callTime:"14:00" },
-    { id:"d4", label:"Day 4", date:"2026-03-05", strips:["s4","s8"], callTime:"06:00" },
+    { id:"d1", label:"Day 1", date:"2026-03-02", strips:["s1","s7"], callTime:"06:00", wrapTime:"18:00" },
+    { id:"d2", label:"Day 2", date:"2026-03-03", strips:["s2","s6","s9"], callTime:"07:00", wrapTime:"19:00" },
+    { id:"d3", label:"Day 3", date:"2026-03-04", strips:["s3","s5"], callTime:"14:00", wrapTime:"02:00" },
+    { id:"d4", label:"Day 4", date:"2026-03-05", strips:["s4","s8"], callTime:"06:00", wrapTime:"18:00" },
   ],
   vehicles: [
     { id:"v1", type:"van15", plate:"CZ-PROD-01", label:"Unit Van A", driverId:"c8", color:"#3b82f6" },

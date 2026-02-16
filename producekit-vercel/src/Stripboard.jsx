@@ -57,19 +57,18 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
   const estTimes = () => {
     if (!selDay) return;
     const ordered = selDay.strips;
+    if (ordered.length === 0) return;
     setStrips(prev => {
-      const up = [...prev];
-      let cur = selDay.callTime || "06:00";
-      ordered.forEach((sid, idx) => {
-        const si = up.findIndex(s => s.id === sid);
-        if (si < 0) return;
-        if (idx > 0) {
-          const prevS = up.find(s => s.id === ordered[idx - 1]);
-          cur = addMin(cur, Math.round((prevS?.pages || 1) * 60));
-        }
+      const up = prev.map(s => ({...s}));
+      let cursor = selDay.callTime || "06:00";
+      for (let idx = 0; idx < ordered.length; idx++) {
+        const si = up.findIndex(s => s.id === ordered[idx]);
+        if (si < 0) continue;
         const dur = Math.round((up[si].pages || 1) * 60);
-        up[si] = { ...up[si], startTime: cur, endTime: addMin(cur, dur) };
-      });
+        up[si].startTime = cursor;
+        up[si].endTime = addMin(cursor, dur);
+        cursor = up[si].endTime;
+      }
       return up;
     });
   };
@@ -138,7 +137,7 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:800,color:isSelected?"#E8C94A":"#f0f0f0",fontSize:14}}>{day.label}</span>
                 <span style={{fontSize:12,color:"#666"}}>{fmtDate(day.date)}</span>
-                <span style={{fontSize:11,color:"#888"}}>Call: {fmtTime(day.callTime)}</span>
+                <span style={{fontSize:11,color:"#888"}}>{fmtTime(day.callTime)}\u2013{fmtTime(day.wrapTime || addMin(day.callTime, 720))}</span>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:11,color:"#888"}}>{ds.length} sc \u00B7 {tp.toFixed(1)} pg</span>
