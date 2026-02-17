@@ -6,7 +6,7 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
   const [rightSearch, setRightSearch] = useState("");
   const [rightFilter, setRightFilter] = useState("All");
 
-  const gLoc = id => locations.find(x => x.id === id)?.name || "\u2014";
+  const gLoc = id => locations.find(x => x.id === id)?.name || "—";
   const getCastStr = (ids) => (ids || []).map(id => cast.find(c => c.id === id)?.roleNum).filter(Boolean).join(", ");
 
   const unassigned = strips.filter(s => !days.some(d => d.strips.includes(s.id)));
@@ -81,13 +81,13 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
       borderRadius:6, fontSize:12, border:"1px solid #1e2028",
     }}>
       {mode === "day" && <div style={{display:"flex",flexDirection:"column",gap:1,flexShrink:0}}>
-        {index > 0 && <button onClick={()=>moveScene(strip.id,-1)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",padding:0,fontSize:9,lineHeight:1}}>{"\u25B2"}</button>}
-        {index < total - 1 && <button onClick={()=>moveScene(strip.id,1)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",padding:0,fontSize:9,lineHeight:1}}>{"\u25BC"}</button>}
+        {index > 0 && <button onClick={()=>moveScene(strip.id,-1)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",padding:0,fontSize:9,lineHeight:1}}>{"▲"}</button>}
+        {index < total - 1 && <button onClick={()=>moveScene(strip.id,1)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",padding:0,fontSize:9,lineHeight:1}}>{"▼"}</button>}
       </div>}
       <span style={{fontWeight:800,color:"#f0f0f0",minWidth:32}}>Sc.{strip.scene}</span>
       <span style={{color:STRIP_COLORS[strip.type],fontWeight:700,fontSize:9,minWidth:34,textAlign:"center",background:STRIP_COLORS[strip.type]+"18",borderRadius:3,padding:"2px 4px"}}>{strip.type}</span>
       <span style={{color:"#aaa",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{strip.synopsis}</span>
-      {(strip.startTime || strip.endTime) && <span style={{color:"#3b82f6",fontSize:9,fontWeight:600,flexShrink:0,background:"#3b82f618",padding:"2px 5px",borderRadius:3}}>{strip.startTime || "?"}\u2013{strip.endTime || "?"}</span>}
+      {(strip.startTime || strip.endTime) && <span style={{color:"#3b82f6",fontSize:9,fontWeight:600,flexShrink:0,background:"#3b82f618",padding:"2px 5px",borderRadius:3}}>{strip.startTime || "?"}–{strip.endTime || "?"}</span>}
       <span style={{color:"#666",fontSize:10,flexShrink:0}}>{gLoc(strip.locationId)}</span>
       <span style={{color:"#888",fontWeight:700,fontSize:10,minWidth:26,textAlign:"right"}}>{strip.pages}pg</span>
       {mode === "day" && <button onClick={()=>unassignScene(strip.id,dayId)} title="Unassign" style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2,flexShrink:0}}><I.ArrowRight/></button>}
@@ -100,7 +100,7 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
       <div>
         <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Stripboard</h2>
         <p style={{margin:"4px 0 0",color:"#888",fontSize:13}}>
-          {strips.length} scenes \u00B7 {days.length} days \u00B7 {unassigned.length} unassigned
+          {strips.length} scenes · {days.length} days · {unassigned.length} unassigned
           {days.length === 0 && <span style={{color:"#f59e0b",marginLeft:8}}>Add shoot days in Calendar</span>}
         </p>
       </div>
@@ -137,11 +137,11 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:800,color:isSelected?"#E8C94A":"#f0f0f0",fontSize:14}}>{day.label}</span>
                 <span style={{fontSize:12,color:"#666"}}>{fmtDate(day.date)}</span>
-                <span style={{fontSize:11,color:"#888"}}>{fmtTime(day.callTime)}\u2013{fmtTime(day.wrapTime || addMin(day.callTime, 720))}</span>
+                <span style={{fontSize:11,color:"#888"}}>{fmtTime(day.callTime)}–{fmtTime(day.wrapTime || addMin(day.callTime, 720))}</span>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:11,color:"#888"}}>{ds.length} sc \u00B7 {tp.toFixed(1)} pg</span>
-                <span style={{fontSize:10,color:isSelected?"#E8C94A":"#555",transition:"transform 0.2s",transform:isSelected?"rotate(180deg)":"rotate(0)"}}>{"\u25BC"}</span>
+                <span style={{fontSize:11,color:"#888"}}>{ds.length} sc · {tp.toFixed(1)} pg</span>
+                <span style={{fontSize:10,color:isSelected?"#E8C94A":"#555",transition:"transform 0.2s",transform:isSelected?"rotate(180deg)":"rotate(0)"}}>{"▼"}</span>
               </div>
             </div>
 

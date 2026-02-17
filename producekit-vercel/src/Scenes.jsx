@@ -16,9 +16,9 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
   const [castSearch, setCastSearch] = useState("");
 
   const doSort = (col) => { if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortCol(col); setSortDir("asc"); } };
-  const SortIcon = ({ col }) => sortCol === col ? <span style={{marginLeft:3,fontSize:8}}>{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span> : null;
+  const SortIcon = ({ col }) => sortCol === col ? <span style={{marginLeft:3,fontSize:8}}>{sortDir === "asc" ? "▲" : "▼"}</span> : null;
 
-  const gLoc = id => locations.find(x => x.id === id)?.name || "\u2014";
+  const gLoc = id => locations.find(x => x.id === id)?.name || "—";
   const getDay = (sid) => days.find(d => d.strips.includes(sid));
   const getCastNames = (ids) => (ids || []).map(id => cast.find(c => c.id === id)).filter(Boolean);
 
@@ -99,7 +99,7 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
       <div>
         <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Scenes</h2>
         <p style={{margin:"4px 0 0",color:"#888",fontSize:13}}>
-          {strips.length} scenes \u00B7 {totalPages.toFixed(1)} pages \u00B7 {strips.filter(s => !getDay(s.id)).length} unassigned
+          {strips.length} scenes · {totalPages.toFixed(1)} pages · {strips.filter(s => !getDay(s.id)).length} unassigned
         </p>
       </div>
       <button onClick={openNew} style={BP}><span style={{display:"flex",alignItems:"center",gap:6}}><I.Plus/> Add Scene</span></button>
@@ -148,7 +148,7 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
               <td style={TD}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:10,background:STRIP_COLORS[s.type]+"18",borderRadius:3,padding:"2px 6px"}}>{s.type}</span></td>
               <td style={{...TD,color:"#aaa"}}>{gLoc(s.locationId)}</td>
               <td style={{...TD,color:"#888",maxWidth:180}} title={castList.map(c=>`${c.roleNum} ${c.name}`).join(", ")}>
-                {castList.length > 0 ? castList.map(c=>c.roleNum).join(", ") : "\u2014"}
+                {castList.length > 0 ? castList.map(c=>c.roleNum).join(", ") : "—"}
                 {castList.length > 0 && <span style={{color:"#555",marginLeft:4}}>({castList.length})</span>}
               </td>
               <td style={{...TD,fontWeight:700,color:"#888"}}>{s.pages}</td>
@@ -165,11 +165,11 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
     </div>
 
     {/* Edit/New Modal */}
-    {editModal && <Modal title={editModal === "new" ? "Add Scene" : `Edit \u2014 Scene ${form.scene}`} onClose={()=>setEditModal(null)} width={620}>
+    {editModal && <Modal title={editModal === "new" ? "Add Scene" : `Edit — Scene ${form.scene}`} onClose={()=>setEditModal(null)} width={620}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div><label style={LS}>Scene #</label><input value={form.scene||""} onChange={e=>setForm({...form,scene:e.target.value})} style={IS}/></div>
         <div><label style={LS}>Type</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={IS}>{Object.keys(STRIP_COLORS).map(t=><option key={t}>{t}</option>)}</select></div>
-        <div><label style={LS}>Location</label><select value={form.locationId||""} onChange={e=>setForm({...form,locationId:e.target.value})} style={IS}><option value="">\u2014</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+        <div><label style={LS}>Location</label><select value={form.locationId||""} onChange={e=>setForm({...form,locationId:e.target.value})} style={IS}><option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
         <div><label style={LS}>Pages</label><input type="number" step="0.125" value={form.pages||""} onChange={e=>setForm({...form,pages:Number(e.target.value)})} style={IS}/></div>
         <div><label style={LS}>Start Time</label><input type="time" value={form.startTime||""} onChange={e=>setForm({...form,startTime:e.target.value})} style={IS}/></div>
         <div><label style={LS}>End Time</label><input type="time" value={form.endTime||""} onChange={e=>setForm({...form,endTime:e.target.value})} style={IS}/></div>
@@ -206,7 +206,7 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
               onMouseEnter={e=>{if(!sel)e.currentTarget.style.background="#1e2128";}}
               onMouseLeave={e=>{if(!sel)e.currentTarget.style.background="transparent";}}>
                 <span style={{width:16,height:16,borderRadius:3,border:`2px solid ${sel?"#E8C94A":"#444"}`,background:sel?"#E8C94A":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {sel && <span style={{color:"#111",fontSize:11,fontWeight:800}}>{"\u2713"}</span>}
+                  {sel && <span style={{color:"#111",fontSize:11,fontWeight:800}}>{"✓"}</span>}
                 </span>
                 <span style={{fontWeight:800,color:sel?"#E8C94A":"#888",fontSize:12,minWidth:28}}>{c.roleNum}</span>
                 <span style={{color:sel?"#f0f0f0":"#aaa",fontSize:12}}>{c.name}</span>

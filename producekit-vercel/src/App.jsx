@@ -41,6 +41,7 @@ export default function App() {
 
   const project = projects.find(p => p.id === activeProjectId) || projects[0];
   const up = (field, value) => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, [field]: typeof value === "function" ? value(p[field]) : value } : p));
+  const setProject = (fn) => setProjects(prev => prev.map(p => p.id === activeProjectId ? (typeof fn === "function" ? fn(p) : { ...p, ...fn }) : p));
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#0e1015", color: "#e0e0e0", fontFamily: "'Inter',system-ui,sans-serif", overflow: "hidden" }}>
@@ -75,7 +76,7 @@ export default function App() {
         {tab === "stripboard" && <StripboardModule strips={project.strips} setStrips={v => up("strips", v)} days={project.days} setDays={v => up("days", v)} locations={project.locations} cast={project.cast} />}
         {tab === "locations" && <LocationsModule locations={project.locations} setLocations={v => up("locations", v)} strips={project.strips} />}
         {tab === "transport" && <TransportModule vehicles={project.vehicles} setVehicles={v => up("vehicles", v)} routes={project.routes} setRoutes={v => up("routes", v)} days={project.days} strips={project.strips} crew={project.crew} cast={project.cast} locations={project.locations} />}
-        {tab === "callsheet" && <CallSheetModule project={project} />}
+        {tab === "callsheet" && <CallSheetModule project={project} setProject={setProject} />}
         {tab === "calendar" && <CalendarModule schedule={project.schedule || {}} setSchedule={v => up("schedule", v)} days={project.days} setDays={v => up("days", v)} shootingDays={project.shootingDays} />}
         {tab === "project" && <ProjectSetup projects={projects} setProjects={setProjects} activeId={activeProjectId} setActiveId={setActiveProjectId} />}
       </main>

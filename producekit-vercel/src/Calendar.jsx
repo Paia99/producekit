@@ -166,8 +166,8 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
         <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Calendar</h2>
         <p style={{margin:"4px 0 0",color:"#888",fontSize:13}}>
           {counts.shoot || 0} / {shootingDays || "?"} shoot days
-          {Object.entries(counts).filter(([t]) => t !== "shoot").length > 0 && " \u00B7 "}
-          {Object.entries(counts).filter(([t]) => t !== "shoot").map(([t,c]) => `${c} ${DAY_LABELS[t]?.toLowerCase() || t}`).join(" \u00B7 ")}
+          {Object.entries(counts).filter(([t]) => t !== "shoot").length > 0 && " · "}
+          {Object.entries(counts).filter(([t]) => t !== "shoot").map(([t,c]) => `${c} ${DAY_LABELS[t]?.toLowerCase() || t}`).join(" · ")}
         </p>
       </div>
     </div>
@@ -180,7 +180,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
           {DAY_LABELS[t]}
         </div>
       ))}
-      <div style={{fontSize:11,color:"#555",marginLeft:8}}>Click to set type \u00B7 Click shoot day to edit shift</div>
+      <div style={{fontSize:11,color:"#555",marginLeft:8}}>Click to set type · Click shoot day to edit shift</div>
     </div>
 
     {/* Month navigation */}
@@ -240,7 +240,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
               )}
               {isShoot && (
                 <div style={{marginTop:3}}>
-                  <span style={{fontSize:9,color:"#888"}}>{callTime}\u2013{wrapTime}</span>
+                  <span style={{fontSize:9,color:"#888"}}>{callTime}–{wrapTime}</span>
                   {dayScenes > 0 && (
                     <span style={{fontSize:9,color:"#E8C94A",marginLeft:4}}>{dayScenes}sc</span>
                   )}
@@ -264,7 +264,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
             const wt = dd?.wrapTime || "18:00";
             return (
               <span key={d} style={{fontSize:11,fontWeight:600,color:"#22c55e",background:"#22c55e15",border:"1px solid #22c55e33",padding:"4px 10px",borderRadius:5}}>
-                Day {shootDayNum[d]} \u2014 {fmtDate(d)} \u00B7 {ct}\u2013{wt}{sc > 0 ? ` \u00B7 ${sc}sc` : ""}
+                Day {shootDayNum[d]} — {fmtDate(d)} · {ct}–{wt}{sc > 0 ? ` · ${sc}sc` : ""}
               </span>
             );
           })}
@@ -278,7 +278,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {Object.entries(sched).filter(([,t]) => t && t !== "shoot").sort(([a],[b]) => a.localeCompare(b)).map(([d,t]) => (
             <span key={d} style={{fontSize:11,fontWeight:600,color:DAY_COLORS[t],background:DAY_BG[t],border:`1px solid ${DAY_COLORS[t]}33`,padding:"4px 10px",borderRadius:5}}>
-              {DAY_LABELS[t]} \u2014 {fmtDate(d)}
+              {DAY_LABELS[t]} — {fmtDate(d)}
             </span>
           ))}
         </div>
@@ -286,7 +286,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
     )}
 
     {/* Edit shoot day modal */}
-    {editDayModal && <Modal title={`Edit Shoot Day ${shootDayNum[editDayModal] || ""} \u2014 ${fmtDate(editDayModal)}`} onClose={() => setEditDayModal(null)}>
+    {editDayModal && <Modal title={`Edit Shoot Day ${shootDayNum[editDayModal] || ""} — ${fmtDate(editDayModal)}`} onClose={() => setEditDayModal(null)}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div>
           <label style={LS}>Call Time (start of day)</label>
@@ -298,7 +298,7 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
         </div>
       </div>
       {dayForm.callTime && dayForm.wrapTime && <div style={{marginTop:12,fontSize:12,color:"#888"}}>
-        Shift: {dayForm.callTime}\u2013{dayForm.wrapTime}
+        Shift: {dayForm.callTime}–{dayForm.wrapTime}
         {(() => {
           const [ch,cm] = dayForm.callTime.split(":").map(Number);
           const [wh,wm] = dayForm.wrapTime.split(":").map(Number);
