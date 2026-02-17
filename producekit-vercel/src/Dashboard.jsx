@@ -2,9 +2,12 @@ import { useState } from "react";
 import { STRIP_COLORS, KEY_ROLES, fmtTime, fmtDate, I } from "./config.jsx";
 
 const DashboardModule = ({ project, setTab }) => {
-  const { crew, days, strips, routes, vehicles, locations, cast } = project;
+  const { crew, days, strips, routes, vehicles, locations, cast, schedule } = project;
   const [selDayId, setSelDayId] = useState(null);
-  const stats = [{l:"Crew",v:crew.length,c:"#3b82f6"},{l:"Days",v:`${days.length}/${project.shootingDays||"—"}`,c:"#E8C94A"},{l:"Scenes",v:strips.length,c:"#22c55e"},{l:"Locations",v:locations.length,c:"#f59e0b"}];
+  const sched = schedule || {};
+  const schedCounts = {};
+  Object.values(sched).forEach(t => { if (t) schedCounts[t] = (schedCounts[t] || 0) + 1; });
+  const stats = [{l:"Crew",v:crew.length,c:"#3b82f6"},{l:"Shoot Days",v:`${schedCounts.shoot||0}/${project.shootingDays||"—"}`,c:"#E8C94A"},{l:"Scenes",v:strips.length,c:"#22c55e"},{l:"Locations",v:locations.length,c:"#f59e0b"}];
   const gLoc = id => locations.find(l=>l.id===id)?.name||"—";
   const gPN = s => s.personType==="cast"?cast.find(c=>String(c.id)===String(s.personId))?.name||"—":crew.find(c=>c.id===s.personId)?.name||"—";
   const sd = days.find(d=>d.id===selDayId);
@@ -28,7 +31,7 @@ const DashboardModule = ({ project, setTab }) => {
       </div>;})}
     </div>
     {sd&&<div style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:10,padding:20,marginBottom:20}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><h3 style={{margin:0,fontSize:16,fontWeight:800,color:"#E8C94A"}}>{sd.label} — {fmtDate(sd.date)}</h3><span style={{fontSize:12,color:"#888"}}>Call: {fmtTime(sd.callTime)}</span></div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><h3 style={{margin:0,fontSize:16,fontWeight:800,color:"#E8C94A"}}>{sd.label} — {fmtDate(sd.date)}</h3><span style={{fontSize:12,color:"#888"}}>{fmtTime(sd.callTime)}–{fmtTime(sd.wrapTime || "18:00")}</span></div>
       <div style={{marginBottom:16}}><div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",marginBottom:8}}>Scenes</div>
         {ss.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid #222"}}><span style={{width:8,height:8,borderRadius:2,background:STRIP_COLORS[s.type]}}/><span style={{fontSize:13,fontWeight:700,color:"#f0f0f0",minWidth:36}}>Sc.{s.scene}</span><span style={{fontSize:10,color:STRIP_COLORS[s.type],fontWeight:700}}>{s.type}</span><span style={{fontSize:12,color:"#aaa",flex:1}}>{s.synopsis}</span>{(s.startTime||s.endTime)&&<span style={{fontSize:11,color:"#888"}}>{s.startTime||"?"} – {s.endTime||"?"}</span>}<span style={{fontSize:11,color:"#666"}}>{s.pages}pg</span></div>)}</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
@@ -37,7 +40,7 @@ const DashboardModule = ({ project, setTab }) => {
       </div>
     </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-      {[{l:"People",i:"\u{1F465}",t:"people"},{l:"Stripboard",i:"\u{1F3AC}",t:"stripboard"},{l:"Locations",i:"\u{1F4CD}",t:"locations"},{l:"Transport",i:"\u{1F690}",t:"transport"},{l:"Call Sheet",i:"\u{1F4C4}",t:"callsheet"},{l:"Project",i:"\u2699\uFE0F",t:"project"}].map(a=>
+      {[{l:"People",i:"\u{1F465}",t:"people"},{l:"Scenes",i:"\u{1F3AC}",t:"scenes"},{l:"Stripboard",i:"\u{1F4CB}",t:"stripboard"},{l:"Locations",i:"\u{1F4CD}",t:"locations"},{l:"Transport",i:"\u{1F690}",t:"transport"},{l:"Call Sheet",i:"\u{1F4C4}",t:"callsheet"},{l:"Calendar",i:"\u{1F4C5}",t:"calendar"},{l:"Project",i:"\u2699\uFE0F",t:"project"}].map(a=>
         <button key={a.t} onClick={()=>setTab(a.t)} style={{display:"flex",alignItems:"center",gap:8,background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:8,padding:"10px 12px",color:"#ddd",fontSize:12,fontWeight:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}><span style={{fontSize:16}}>{a.i}</span>{a.l}</button>)}
     </div>
   </div>;

@@ -5,11 +5,11 @@ import { defaultProject } from "./data.jsx";
 const ProjectSetup = ({ projects, setProjects, activeId, setActiveId }) => {
   const [editModal,setEditModal]=useState(null);const [form,setForm]=useState({});
   const active=projects.find(p=>p.id===activeId);
-  const openEdit=(p)=>{setForm({id:p.id,name:p.name,production:p.production,shootingDays:p.shootingDays||20,keyRoles:{...(p.keyRoles||{})}});setEditModal("edit");};
-  const openNew=()=>{setForm({name:"New Production",production:"",shootingDays:20,keyRoles:{}});setEditModal("new");};
+  const openEdit=(p)=>{setForm({id:p.id,name:p.name,production:p.production,shootingDays:p.shootingDays||20,idec:p.idec||"",keyRoles:{...(p.keyRoles||{})}});setEditModal("edit");};
+  const openNew=()=>{setForm({name:"New Production",production:"",shootingDays:20,idec:"",keyRoles:{}});setEditModal("new");};
   const save=()=>{
-    if(editModal==="new"){const np=defaultProject();np.name=form.name;np.production=form.production;np.shootingDays=form.shootingDays;np.keyRoles=form.keyRoles;np.crew=[];np.cast=[];np.strips=[];np.days=[];np.vehicles=[];np.routes=[];np.locations=[];setProjects(p=>[...p,np]);setActiveId(np.id);}
-    else{setProjects(p=>p.map(pr=>pr.id===form.id?{...pr,name:form.name,production:form.production,shootingDays:form.shootingDays,keyRoles:form.keyRoles}:pr));}
+    if(editModal==="new"){const np=defaultProject();np.name=form.name;np.production=form.production;np.shootingDays=form.shootingDays;np.idec=form.idec;np.keyRoles=form.keyRoles;np.crew=[];np.cast=[];np.strips=[];np.days=[];np.vehicles=[];np.routes=[];np.locations=[];np.schedule={};setProjects(p=>[...p,np]);setActiveId(np.id);}
+    else{setProjects(p=>p.map(pr=>pr.id===form.id?{...pr,name:form.name,production:form.production,shootingDays:form.shootingDays,idec:form.idec,keyRoles:form.keyRoles}:pr));}
     setEditModal(null);
   };
   return <div>
@@ -22,7 +22,7 @@ const ProjectSetup = ({ projects, setProjects, activeId, setActiveId }) => {
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
           <div><div style={{fontSize:16,fontWeight:800,color:p.id===activeId?"#E8C94A":"#f0f0f0"}}>{p.name}{p.id===activeId&&<span style={{fontSize:10,marginLeft:8,color:"#22c55e"}}>ACTIVE</span>}</div><div style={{fontSize:12,color:"#888"}}>{p.production}</div></div>
         </div>
-        <div style={{fontSize:11,color:"#666",marginBottom:8}}>{p.crew?.length||0} crew · {p.cast?.length||0} cast · {p.days?.length||0}/{p.shootingDays||"?"} days · {p.strips?.length||0} scenes</div>
+        <div style={{fontSize:11,color:"#666",marginBottom:8}}>{p.idec&&<span style={{color:"#888",marginRight:8}}>IDEC: {p.idec}</span>}{p.crew?.length||0} crew · {p.cast?.length||0} cast · {p.days?.length||0}/{p.shootingDays||"?"} days · {p.strips?.length||0} scenes</div>
         {p.keyRoles&&<div style={{fontSize:10,color:"#555",marginBottom:10}}>{KEY_ROLES.filter(r=>p.keyRoles[r]).map(r=>`${r}: ${p.keyRoles[r]}`).join(" · ")}</div>}
         <div style={{display:"flex",gap:6}}>
           {p.id!==activeId&&<button onClick={()=>setActiveId(p.id)} style={{...BP,padding:"6px 12px",fontSize:11}}>Activate</button>}
@@ -36,6 +36,7 @@ const ProjectSetup = ({ projects, setProjects, activeId, setActiveId }) => {
         <div><label style={LS}>Production Name</label><input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} style={IS}/></div>
         <div><label style={LS}>Production Company</label><input value={form.production||""} onChange={e=>setForm({...form,production:e.target.value})} style={IS}/></div>
         <div><label style={LS}>Shooting Days (Total)</label><input type="number" value={form.shootingDays||20} onChange={e=>setForm({...form,shootingDays:Number(e.target.value)})} style={IS}/></div>
+        <div><label style={LS}>IDEC (Project Number)</label><input value={form.idec||""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,15);setForm({...form,idec:v});}} maxLength={15} placeholder="15-digit project ID" style={IS}/></div>
       </div>
       <h4 style={{margin:"20px 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Key Roles</h4>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
