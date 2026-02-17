@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { STRIP_COLORS, VEHICLE_TYPES, KEY_ROLES, DEPARTMENTS, fmtTime, fmtDate, subMin, I, IS } from "./config.jsx";
+import { STRIP_COLORS, VEHICLE_TYPES, KEY_ROLES, DEPARTMENTS, fmtTime, fmtDate, subMin, addMin, I, IS, AddressInput } from "./config.jsx";
 
 /* ── small reusable components ───────────────────────────── */
 const TI = ({ value, onChange, color, w }) => (
@@ -10,16 +10,19 @@ const TI = ({ value, onChange, color, w }) => (
     onClick={e => e.stopPropagation()} />
 );
 
-const HInput = ({ value, onChange, placeholder, w, color, bold }) => (
+const HInput = ({ value, onChange, placeholder, w, color }) => (
   <input value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder || ""}
     style={{ background:"transparent", border:"1px solid #2a2d35", borderRadius:3,
-      color: color || "#ccc", fontSize:10, fontWeight: bold ? 700 : 400, padding:"2px 6px",
+      color: color || "#ccc", fontSize:10, padding:"2px 6px",
       width: w || "100%", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
     onClick={e => e.stopPropagation()} />
 );
 
-const SH = ({ children }) => (
-  <h4 style={{margin:"18px 0 8px",fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:"0.05em",borderBottom:"1px solid #222",paddingBottom:6}}>{children}</h4>
+const SH = ({ children, right }) => (
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"18px 0 8px",borderBottom:"1px solid #222",paddingBottom:6}}>
+    <h4 style={{margin:0,fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:"0.05em"}}>{children}</h4>
+    {right}
+  </div>
 );
 
 const thS = { padding:"5px 8px", textAlign:"left", color:"#666", fontWeight:700, fontSize:9, textTransform:"uppercase", letterSpacing:"0.03em" };
@@ -27,7 +30,7 @@ const tdS = { padding:"5px 8px", fontSize:11, borderBottom:"1px solid #1a1d23" }
 const MAKEUP_OFFSET = 10;
 const COSTUME_OFFSET = 20;
 
-/* ── header contact roles (order matters) ────────────────── */
+/* ── header contact roles ────────────────────────────────── */
 const HEADER_ROLES = [
   { key:"producer", label:"Producer", keyRole:"Producer" },
   { key:"execProducer", label:"Exec Producer", keyRole:"Exec Producer" },
@@ -36,7 +39,13 @@ const HEADER_ROLES = [
   { key:"ad1", label:"1st AD", keyRole:"1st AD" },
   { key:"ad2", label:"2nd AD", keyRole:null },
   { key:"lineProducer", label:"Line Producer", keyRole:"Line Producer" },
-  { key:"locationManager", label:"Location Manager", keyRole:null },
+  { key:"locationManager", label:"Location Mgr", keyRole:null },
+];
+
+/* ── break types ─────────────────────────────────────────── */
+const BREAK_TYPES = [
+  { id:"lunch", label:"Lunch Break", defaultDur:60, color:"#f59e0b" },
+  { id:"custom", label:"Break", defaultDur:30, color:"#888" },
 ];
 
 const CallSheetModule = ({ project, setProject }) => {
@@ -59,6 +68,7 @@ const CallSheetModule = ({ project, setProject }) => {
   const csCrew = cs.crew || {};
   const csNotes = cs.notes || [];
   const csHeader = cs.header || {};
+  const csBreaks = cs.breaks || []; // [{id, type, label, duration, afterScene, startTime, endTime}]
 
   /* ── persist ───────────────────────────────────────────── */
   const persistCS = (patch) => {
@@ -70,68 +80,121 @@ const CallSheetModule = ({ project, setProject }) => {
     }));
   };
 
-  const updateHeader = (field, value) => {
-    persistCS({ header: { ...csHeader, [field]: value } });
-  };
-
+  const updateHeader = (field, value) => persistCS({ header: { ...csHeader, [field]: value } });
   const updateContact = (key, field, value) => {
     const contacts = csHeader.contacts || {};
     const current = contacts[key] || {};
     persistCS({ header: { ...csHeader, contacts: { ...contacts, [key]: { ...current, [field]: value } } } });
   };
 
-  /* ── auto-populate header on first load for this day ───── */
+  /* ── auto-populate header once ─────────────────────────── */
   useEffect(() => {
     if (!day || csHeader._initialized) return;
-
-    // Build contacts from keyRoles and crew
     const contacts = {};
     HEADER_ROLES.forEach(({ key, keyRole }) => {
-      let name = "";
-      let phone = "";
-      // Try keyRoles first
+      let name = "", phone = "";
       if (keyRole && project.keyRoles?.[keyRole]) {
         name = project.keyRoles[keyRole];
-        // Try to find matching crew member for phone
         const match = crew.find(c => c.name === name);
         if (match) phone = match.phone || "";
       }
       contacts[key] = { name, phone };
     });
-
-    // Find basecamp from locations
     const basecamp = locations.find(l => l.type === "Basecamp");
-
-    const initial = {
+    persistCS({ header: {
       _initialized: true,
       callOnSet: day.callTime || "06:00",
-      firstTake: "",
-      estWrap: day.wrapTime || "18:00",
-      transportTime: "",
-      sunrise: "",
-      sunset: "",
-      weather: "",
-      locationId: "",
-      basecampId: basecamp?.id || "",
-      basecampManual: "",
+      firstTake: "", estWrap: day.wrapTime || "18:00",
+      transportTime: "", sunrise: "", sunset: "", weather: "",
+      locationId: "", basecampAddr: basecamp ? `${basecamp.name}, ${basecamp.address}` : "",
       muaCostumeAddr: "",
       contacts,
-    };
-
-    persistCS({ header: { ...initial, ...csHeader } });
+      ...csHeader,
+    }});
   }, [selDayId]);
 
-  /* ── header getters ────────────────────────────────────── */
   const h = csHeader;
   const hContacts = h.contacts || {};
 
-  const getLocAddr = () => {
-    if (h.locationId) { const l = gLoc(h.locationId); return l ? `${l.name} — ${l.address}` : ""; }
-    return "";
+  /* ── estimate times ────────────────────────────────────── */
+  const estimateTimes = () => {
+    if (!day || dayStrips.length === 0) return;
+
+    const ordered = day.strips;
+    // Build ordered list of scenes + breaks
+    const breakMap = {};
+    csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
+
+    let cursor = h.callOnSet || day.callTime || "06:00";
+    const updatedStrips = strips.map(s => ({...s}));
+
+    for (let idx = 0; idx < ordered.length; idx++) {
+      const sid = ordered[idx];
+      const si = updatedStrips.findIndex(s => s.id === sid);
+      if (si < 0) continue;
+      const dur = Math.round((updatedStrips[si].pages || 1) * 60);
+      updatedStrips[si].startTime = cursor;
+      updatedStrips[si].endTime = addMin(cursor, dur);
+      cursor = updatedStrips[si].endTime;
+
+      // Check for break after this scene
+      const brk = breakMap[sid];
+      if (brk) {
+        const bDur = brk.duration || 60;
+        // Update break times
+        const updatedBreaks = csBreaks.map(b => b.id === brk.id ? { ...b, startTime: cursor, endTime: addMin(cursor, bDur) } : b);
+        persistCS({ breaks: updatedBreaks });
+        cursor = addMin(cursor, bDur);
+      }
+    }
+
+    // Set first take from first scene
+    const firstScene = updatedStrips.find(s => s.id === ordered[0]);
+    if (firstScene?.startTime) {
+      updateHeader("firstTake", firstScene.startTime);
+    }
+
+    // Persist strips
+    setProject(prev => ({ ...prev, strips: updatedStrips }));
   };
-  const getBaseAddr = () => {
-    if (h.basecampId) { const l = gLoc(h.basecampId); return l ? `${l.name} — ${l.address}` : ""; }
-    return h.basecampManual || "";
+
+  /* ── breaks ────────────────────────────────────────────── */
+  const addBreak = (type, afterSceneId) => {
+    const bt = BREAK_TYPES.find(b => b.id === type) || BREAK_TYPES[0];
+    const newBreak = {
+      id: "brk" + Date.now(),
+      type: bt.id,
+      label: bt.label,
+      duration: bt.defaultDur,
+      afterScene: afterSceneId || (dayStrips.length > 0 ? dayStrips[0].id : ""),
+      startTime: "", endTime: "",
+    };
+    persistCS({ breaks: [...csBreaks, newBreak] });
+  };
+
+  const updateBreak = (brkId, field, value) => {
+    persistCS({ breaks: csBreaks.map(b => b.id === brkId ? { ...b, [field]: value } : b) });
+  };
+
+  const removeBreak = (brkId) => {
+    persistCS({ breaks: csBreaks.filter(b => b.id !== brkId) });
+  };
+
+  // Build scene+break display order
+  const buildSceneOrder = () => {
+    const result = [];
+    const breakMap = {};
+    csBreaks.forEach(b => {
+      if (!breakMap[b.afterScene]) breakMap[b.afterScene] = [];
+      breakMap[b.afterScene].push(b);
+    });
+    dayStrips.forEach(s => {
+      result.push({ type: "scene", data: s });
+      if (breakMap[s.id]) {
+        breakMap[s.id].forEach(b => result.push({ type: "break", data: b }));
+      }
+    });
+    return result;
   };
 
   /* ── cast helpers ──────────────────────────────────────── */
@@ -169,21 +232,15 @@ const CallSheetModule = ({ project, setProject }) => {
   DEPARTMENTS.forEach(dept => { crew.filter(c => c.dept === dept).forEach(c => orderedCrew.push(c)); });
   crew.forEach(c => { if (!orderedCrew.find(x => x.id === c.id)) orderedCrew.push(c); });
 
-  /* ── notes helpers ─────────────────────────────────────── */
-  const addNote = () => {
-    persistCS({ notes: [...csNotes, { id: "n" + Date.now(), dept: DEPARTMENTS[0], sceneId: "", text: "" }] });
-  };
-  const updateNote = (noteId, field, value) => {
-    persistCS({ notes: csNotes.map(n => n.id === noteId ? { ...n, [field]: value } : n) });
-  };
-  const removeNote = (noteId) => {
-    persistCS({ notes: csNotes.filter(n => n.id !== noteId) });
-  };
+  /* ── notes ─────────────────────────────────────────────── */
+  const addNote = () => persistCS({ notes: [...csNotes, { id: "n" + Date.now(), dept: DEPARTMENTS[0], sceneId: "", text: "" }] });
+  const updateNote = (noteId, field, value) => persistCS({ notes: csNotes.map(n => n.id === noteId ? { ...n, [field]: value } : n) });
+  const removeNote = (noteId) => persistCS({ notes: csNotes.filter(n => n.id !== noteId) });
 
   const sortedCast = [...dayCast].sort((a, b) => (getCastCS(a.id).onSet || "99:99").localeCompare(getCastCS(b.id).onSet || "99:99"));
   const nextDayStrips = nextDay ? nextDay.strips.map(sid => strips.find(s => s.id === sid)).filter(Boolean) : [];
+  const sceneOrder = buildSceneOrder();
 
-  /* ── label + value row helper for header ───────────────── */
   const HR = ({ label, children }) => (
     <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0"}}>
       <span style={{fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase",minWidth:80,flexShrink:0}}>{label}</span>
@@ -215,8 +272,6 @@ const CallSheetModule = ({ project, setProject }) => {
 
       {/* ════════════════ HEADER ════════════════════════ */}
       <div style={{background:"#1e2128",borderBottom:"1px solid #2a2d35"}}>
-
-        {/* Top bar: production + day */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 20px",borderBottom:"1px solid #2a2d35"}}>
           <div>
             <span style={{fontSize:16,fontWeight:800,color:"#E8C94A"}}>{project.name}</span>
@@ -228,10 +283,8 @@ const CallSheetModule = ({ project, setProject }) => {
           </div>
         </div>
 
-        {/* 3-column info grid */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0}}>
-
-          {/* LEFT: Day timing */}
+          {/* LEFT: Schedule */}
           <div style={{padding:"10px 16px",borderRight:"1px solid #2a2d35"}}>
             <div style={{fontSize:9,fontWeight:700,color:"#555",textTransform:"uppercase",marginBottom:6,letterSpacing:"0.05em"}}>Schedule</div>
             <HR label="Shift"><span style={{fontSize:12,fontWeight:800,color:"#E8C94A"}}>{fmtTime(day.callTime)}–{fmtTime(day.wrapTime || "18:00")}</span></HR>
@@ -246,7 +299,7 @@ const CallSheetModule = ({ project, setProject }) => {
             </div>
           </div>
 
-          {/* MIDDLE: Addresses */}
+          {/* MIDDLE: Addresses with autocomplete */}
           <div style={{padding:"10px 16px",borderRight:"1px solid #2a2d35"}}>
             <div style={{fontSize:9,fontWeight:700,color:"#555",textTransform:"uppercase",marginBottom:6,letterSpacing:"0.05em"}}>Addresses</div>
             <div style={{marginBottom:8}}>
@@ -259,16 +312,11 @@ const CallSheetModule = ({ project, setProject }) => {
             </div>
             <div style={{marginBottom:8}}>
               <div style={{fontSize:9,fontWeight:700,color:"#666",marginBottom:3}}>BASECAMP</div>
-              <select value={h.basecampId || ""} onChange={e => updateHeader("basecampId", e.target.value)}
-                style={{width:"100%",background:"#12141a",border:"1px solid #2a2d35",borderRadius:3,color:"#ccc",fontSize:10,padding:"4px 6px",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
-                <option value="">— Select or type below —</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name} — {l.address}</option>)}
-              </select>
-              {!h.basecampId && <HInput value={h.basecampManual || ""} onChange={v => updateHeader("basecampManual", v)} placeholder="Manual basecamp address..." />}
+              <AddressInput value={h.basecampAddr || ""} onChange={v => updateHeader("basecampAddr", v)} placeholder="Basecamp address..." style={{fontSize:10,padding:"4px 6px"}} />
             </div>
             <div>
               <div style={{fontSize:9,fontWeight:700,color:"#666",marginBottom:3}}>MUA + COSTUMES</div>
-              <HInput value={h.muaCostumeAddr || ""} onChange={v => updateHeader("muaCostumeAddr", v)} placeholder="Address for makeup & costumes..." />
+              <AddressInput value={h.muaCostumeAddr || ""} onChange={v => updateHeader("muaCostumeAddr", v)} placeholder="Makeup & costumes address..." style={{fontSize:10,padding:"4px 6px"}} />
             </div>
           </div>
 
@@ -292,8 +340,24 @@ const CallSheetModule = ({ project, setProject }) => {
       {/* ════════════════ BODY ═════════════════════════ */}
       <div style={{padding:"10px 20px 20px"}}>
 
-        {/* ── SCENES ──────────────────────────────────── */}
-        <SH>Scenes ({dayStrips.length} · {dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages)</SH>
+        {/* ── SCENES with breaks ─────────────────────── */}
+        <SH right={
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={() => addBreak("lunch", dayStrips.length > 1 ? dayStrips[Math.floor(dayStrips.length/2)-1].id : dayStrips[0]?.id)}
+              style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:4,color:"#f59e0b",fontSize:9,fontWeight:600,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit"}}>
+              + Lunch Break
+            </button>
+            <button onClick={() => addBreak("custom", dayStrips[0]?.id)}
+              style={{background:"#2a2d35",border:"1px solid #3a3d45",borderRadius:4,color:"#888",fontSize:9,fontWeight:600,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit"}}>
+              + Break
+            </button>
+            <button onClick={estimateTimes}
+              style={{background:"#3b82f618",border:"1px solid #3b82f633",borderRadius:4,color:"#3b82f6",fontSize:9,fontWeight:700,padding:"3px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+              ⏱ Estimate Times
+            </button>
+          </div>
+        }>Scenes ({dayStrips.length} · {dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages)</SH>
+
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
             <thead><tr style={{borderBottom:"1px solid #333"}}>
@@ -302,20 +366,57 @@ const CallSheetModule = ({ project, setProject }) => {
               )}
             </tr></thead>
             <tbody>
-              {dayStrips.map(s => {
-                const loc = gLoc(s.locationId);
-                return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
-                  <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
-                  <td style={{...tdS,color:"#3b82f6",fontWeight:600,fontSize:10,width:80,whiteSpace:"nowrap"}}>
-                    {s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : "—"}
+              {sceneOrder.map(item => {
+                if (item.type === "scene") {
+                  const s = item.data;
+                  const loc = gLoc(s.locationId);
+                  return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
+                    <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
+                    <td style={{...tdS,color:"#3b82f6",fontWeight:600,fontSize:10,width:80,whiteSpace:"nowrap"}}>
+                      {s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : "—"}
+                    </td>
+                    <td style={{...tdS,color:"#aaa",maxWidth:240}}>{s.synopsis}</td>
+                    <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>
+                      {(s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c?.roleNum || id; }).join(", ")}
+                    </td>
+                    <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
+                    <td style={{...tdS,color:"#888",width:40}}>{s.pages}</td>
+                    <td style={{...tdS,color:"#888",fontSize:10}}>{loc?.name || "—"}</td>
+                  </tr>;
+                }
+                // Break row
+                const b = item.data;
+                const bt = BREAK_TYPES.find(t => t.id === b.type) || BREAK_TYPES[1];
+                return <tr key={b.id} style={{borderBottom:"1px solid #1e2028",background:bt.color + "08"}}>
+                  <td style={{...tdS,fontWeight:700,color:bt.color}} colSpan={1}>
+                    <span style={{fontSize:9}}>⏸</span>
                   </td>
-                  <td style={{...tdS,color:"#aaa",maxWidth:240}}>{s.synopsis}</td>
-                  <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>
-                    {(s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c?.roleNum || id; }).join(", ")}
+                  <td style={{...tdS,color:bt.color,fontWeight:600,fontSize:10,whiteSpace:"nowrap"}}>
+                    {b.startTime && b.endTime ? `${b.startTime}–${b.endTime}` : "—"}
                   </td>
-                  <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
-                  <td style={{...tdS,color:"#888",width:40}}>{s.pages}</td>
-                  <td style={{...tdS,color:"#888",fontSize:10}}>{loc?.name || "—"}</td>
+                  <td style={tdS} colSpan={3}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <input value={b.label || ""} onChange={e => updateBreak(b.id, "label", e.target.value)}
+                        style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:bt.color,fontSize:11,fontWeight:700,padding:"2px 6px",width:160,fontFamily:"inherit",outline:"none"}} />
+                      <span style={{fontSize:9,color:"#666"}}>after</span>
+                      <select value={b.afterScene || ""} onChange={e => updateBreak(b.id, "afterScene", e.target.value)}
+                        style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:3,color:"#ccc",fontSize:10,padding:"2px 4px",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
+                        {dayStrips.map(s => <option key={s.id} value={s.id}>Sc. {s.scene}</option>)}
+                      </select>
+                    </div>
+                  </td>
+                  <td style={tdS}>
+                    <div style={{display:"flex",alignItems:"center",gap:2}}>
+                      <input type="number" value={b.duration || 60} onChange={e => updateBreak(b.id, "duration", Number(e.target.value))}
+                        style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:10,padding:"2px 4px",width:36,fontFamily:"inherit",outline:"none",textAlign:"center"}} />
+                      <span style={{fontSize:8,color:"#555"}}>min</span>
+                    </div>
+                  </td>
+                  <td style={tdS}>
+                    <button onClick={() => removeBreak(b.id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}>
+                      <I.X/>
+                    </button>
+                  </td>
                 </tr>;
               })}
               {dayStrips.length === 0 && <tr><td colSpan={7} style={{...tdS,textAlign:"center",color:"#555",padding:16}}>No scenes assigned</td></tr>}
@@ -352,36 +453,23 @@ const CallSheetModule = ({ project, setProject }) => {
                   </td>
                 </tr>;
               })}
-              {dayCast.length === 0 && <tr><td colSpan={9} style={{...tdS,textAlign:"center",color:"#555",padding:16}}>No cast in this day's scenes</td></tr>}
+              {dayCast.length === 0 && <tr><td colSpan={9} style={{...tdS,textAlign:"center",color:"#555",padding:16}}>No cast</td></tr>}
             </tbody>
           </table>
         </div>
 
-        {/* ── CREW CALLS ──────────────────────────────── */}
+        {/* ── CREW CALLS — compact 2-column ─────────── */}
         <SH>Crew Calls ({crew.length})</SH>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
-            <thead><tr style={{borderBottom:"1px solid #333"}}>
-              <th style={{...thS,width:120}}>Role</th>
-              <th style={thS}>Name</th>
-              <th style={{...thS,width:78}}>Call</th>
-              <th style={thS}>Dept</th>
-            </tr></thead>
-            <tbody>
-              {orderedCrew.map((c, i) => {
-                const crewData = getCrewCS(c.id);
-                const prevDept = i > 0 ? orderedCrew[i-1].dept : null;
-                const showDivider = c.dept !== prevDept && i > 0;
-                return <tr key={c.id} style={{borderBottom:"1px solid #1a1d23",borderTop:showDivider?"1px solid #2a2d35":"none"}}>
-                  <td style={{...tdS,color:"#888",fontWeight:600,fontSize:10}}>{c.role}</td>
-                  <td style={{...tdS,color:"#f0f0f0",fontWeight:600}}>{c.name}</td>
-                  <td style={{...tdS,width:78}}><TI value={crewData.call} onChange={v=>updateCrewCS(c.id,"call",v)} /></td>
-                  <td style={{...tdS,color:"#555",fontSize:10}}>{c.dept}</td>
-                </tr>;
-              })}
-              {crew.length === 0 && <tr><td colSpan={4} style={{...tdS,textAlign:"center",color:"#555",padding:16}}>No crew</td></tr>}
-            </tbody>
-          </table>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
+          {orderedCrew.map((c, i) => {
+            const crewData = getCrewCS(c.id);
+            const showDivider = i > 0 && c.dept !== orderedCrew[i-1].dept;
+            return <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:11,borderTop:showDivider?"1px solid #2a2d35":"none"}}>
+              <span style={{color:"#888",fontWeight:600,fontSize:10,minWidth:90,flexShrink:0}}>{c.role}</span>
+              <span style={{color:"#f0f0f0",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+              <TI value={crewData.call} onChange={v=>updateCrewCS(c.id,"call",v)} w={66} />
+            </div>;
+          })}
         </div>
 
         {/* ── NOTES ───────────────────────────────────── */}
@@ -410,8 +498,7 @@ const CallSheetModule = ({ project, setProject }) => {
           <button onClick={addNote} style={{
             display:"flex",alignItems:"center",gap:5,padding:"8px 12px",
             background:"transparent",border:"1px dashed #2a2d35",borderRadius:6,
-            color:"#666",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
-            width:"fit-content",
+            color:"#666",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"fit-content",
           }}>
             <I.Plus/> Add Note
           </button>

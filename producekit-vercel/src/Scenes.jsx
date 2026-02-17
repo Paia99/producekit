@@ -171,8 +171,6 @@ const ScenesModule = ({ strips, setStrips, days, setDays, locations, cast }) => 
         <div><label style={LS}>Type</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={IS}>{Object.keys(STRIP_COLORS).map(t=><option key={t}>{t}</option>)}</select></div>
         <div><label style={LS}>Location</label><select value={form.locationId||""} onChange={e=>setForm({...form,locationId:e.target.value})} style={IS}><option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
         <div><label style={LS}>Pages</label><input type="number" step="0.125" value={form.pages||""} onChange={e=>setForm({...form,pages:Number(e.target.value)})} style={IS}/></div>
-        <div><label style={LS}>Start Time</label><input type="time" value={form.startTime||""} onChange={e=>setForm({...form,startTime:e.target.value})} style={IS}/></div>
-        <div><label style={LS}>End Time</label><input type="time" value={form.endTime||""} onChange={e=>setForm({...form,endTime:e.target.value})} style={IS}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={LS}>Synopsis</label><input value={form.synopsis||""} onChange={e=>setForm({...form,synopsis:e.target.value})} style={IS}/></div>
 
         {/* Cast multi-select with search */}
