@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
 // ─── CONSTANTS ───────────────────────────────────────────────
-export const DEPARTMENTS = ["Camera","Grip","Electric","Art","Wardrobe","Hair/Makeup","Sound","Driver","Transport","Production","Directing","Stunts","VFX","Catering"];
+export const DEPARTMENTS = ["Directing","Production","Camera","Sound","Grip","Electric","Art","Wardrobe","Hair/Makeup","Stunts","VFX","Transport","Driver","Catering"];
 export const STRIP_COLORS = { "D/INT": "#E8C94A", "D/EXT": "#D4943A", "N/INT": "#4A7EE8", "N/EXT": "#7B4AE8" };
 export const VEHICLE_TYPES = [
   { id: "van15", label: "15-Seat Van", capacity: 15, icon: "\u{1F690}" },
