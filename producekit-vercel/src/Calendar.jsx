@@ -287,6 +287,16 @@ const CalendarModule = ({ schedule, setSchedule, days, setDays, shootingDays }) 
 
     {/* Edit shoot day modal */}
     {editDayModal && <Modal title={`Edit Shoot Day ${shootDayNum[editDayModal] || ""} — ${fmtDate(editDayModal)}`} onClose={() => setEditDayModal(null)}>
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <button onClick={() => setDayForm({...dayForm, wrapTime: addMin(dayForm.callTime, 720)})}
+          style={{flex:1,background:"#22c55e18",border:"1px solid #22c55e33",borderRadius:6,padding:"8px",color:"#22c55e",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          12h Shift
+        </button>
+        <button onClick={() => setDayForm({...dayForm, wrapTime: addMin(dayForm.callTime, 480)})}
+          style={{flex:1,background:"#3b82f618",border:"1px solid #3b82f633",borderRadius:6,padding:"8px",color:"#3b82f6",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          8h Shift
+        </button>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div>
           <label style={LS}>Call Time (start of day)</label>

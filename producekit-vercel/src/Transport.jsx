@@ -195,6 +195,22 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         </div>)}
         <button onClick={addSt} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
       </div>
+      {/* Cast call times reference for this day */}
+      {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,padding:"8px 10px",marginBottom:12}}>
+        <div style={{fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase",marginBottom:4}}>Cast Call Times — {day.label} (for transport planning)</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"2px 16px"}}>
+          {cl.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<div key={c.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,padding:"2px 0"}}>
+            <span style={{color:"#E8C94A",fontWeight:800,minWidth:22}}>#{c.roleNum}</span>
+            <span style={{color:"#ccc",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+            <span style={{color:"#f59e0b",fontWeight:600}}>{d?.costume||"—"}</span>
+            <span style={{fontSize:8,color:"#555"}}>C</span>
+            <span style={{color:"#a855f7",fontWeight:600}}>{d?.makeup||"—"}</span>
+            <span style={{fontSize:8,color:"#555"}}>M</span>
+            <span style={{color:"#22c55e",fontWeight:600}}>{d?.onSet||"—"}</span>
+            <span style={{fontSize:8,color:"#555"}}>Set</span>
+          </div>;})}
+        </div>
+      </div>;})()}
       <div><label style={LS}>Notes</label><textarea value={rf.notes||""} onChange={e=>setRf({...rf,notes:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editRoute!=="new"&&<button onClick={()=>{setRoutes(p=>p.filter(r=>r.id!==rf.id));setEditRoute(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditRoute(null)} style={BS}>Cancel</button><button onClick={saveR} style={BP}>Save</button></div></div>
     </Modal>}
