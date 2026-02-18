@@ -280,7 +280,7 @@ const CallSheetModule = ({ project, setProject }) => {
 
     const castRows = sortedCast.map(c => {
       const d = getCastCS(c.id); const scenes = castScenes(c.id); const pickup = getPickup(c.id);
-      return `<tr><td class="sc">${c.roleNum}</td><td>${c.roleName}</td><td class="b">${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td class="mono">${fmtTime(d.costume)}</td><td class="mono">${fmtTime(d.makeup)}</td><td class="mono b">${fmtTime(d.onSet)}</td><td class="mono">${pickup ? fmtTime(pickup) : "—"}</td></tr>`;
+      return `<tr><td class="sc">${c.roleNum}</td><td>${c.roleName}</td><td class="b">${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td class="mono">${pickup ? fmtTime(pickup) : "—"}</td><td class="mono">${fmtTime(d.costume)}</td><td class="mono">${fmtTime(d.makeup)}</td><td class="mono b">${fmtTime(d.onSet)}</td></tr>`;
     }).join("");
 
     // Crew grouped by department
@@ -291,7 +291,10 @@ const CallSheetModule = ({ project, setProject }) => {
       crewRows += `<tr><td>${c.role}</td><td>${c.name}</td><td class="mono b">${fmtTime(cc)}</td></tr>`;
     });
 
-    const notesRows = csNotes.map(n => `<tr><td class="b" style="width:90px">${n.dept}</td><td>${(n.text||"").replace(/\n/g,"<br>")}</td></tr>`).join("");
+    const notesRows = csNotes.map(n => {
+      const txt = (n.text||"").replace(/\n/g,"<br>").replace(/(Sc\d+)/g, '<strong>$1</strong>');
+      return `<tr><td class="b" style="width:90px">${n.dept}</td><td>${txt}</td></tr>`;
+    }).join("");
 
     const contactRows = HEADER_ROLES.map(({ key, label }) => {
       const c = hContacts[key] || {}; if (!c.name) return "";
@@ -354,18 +357,7 @@ td{padding:2px 4px;font-size:8.5px;border-bottom:0.5px solid #e5e5e5;vertical-al
 .NINT{background:#DBEAFE;color:#1E40AF}
 .NEXT{background:#EDE9FE;color:#5B21B6}
 
-/* Crew 3-col */
-.crew-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px}
-
-/* Hospital */
-.hospital{display:flex;align-items:center;gap:6px;background:#FEF2F2;border:1px solid #FECACA;border-radius:3px;padding:4px 10px;margin-bottom:6px;font-size:8.5px;color:#991B1B;font-weight:600}
-.hospital .icon{font-size:12px}
-
-/* Next day */
-.next-day{background:#f5f5f5;border-radius:3px;padding:6px 10px;font-size:8px;color:#555;margin-top:6px}
-.next-day strong{color:#333}
-
-/* Footer */
+/* Crew columns */
 .footer{margin-top:8px;text-align:center;font-size:7px;color:#aaa;border-top:0.5px solid #ddd;padding-top:4px}
 </style></head><body>
 
@@ -403,16 +395,14 @@ ${h.announcements ? `<div class="announce">📢 ${h.announcements}</div>` : ""}
     <div class="col-title">Addresses</div>
     <div style="margin-bottom:3px"><span style="font-size:7px;font-weight:700;color:#888">LOCATION</span><br><span style="font-weight:700;font-size:9px">${loc ? loc.name : "—"}</span>${loc ? `<br><span style="color:#666">${loc.address}</span>` : ""}</div>
     <div style="margin-bottom:3px"><span style="font-size:7px;font-weight:700;color:#888">BASECAMP</span><br><span style="font-size:8.5px">${basecampStr || "—"}</span></div>
-    <div><span style="font-size:7px;font-weight:700;color:#888">MUA / COSTUMES</span><br><span style="font-size:8.5px">${h.muaCostumeAddr || "—"}</span></div>
+    <div style="margin-bottom:3px"><span style="font-size:7px;font-weight:700;color:#888">MUA / COSTUMES</span><br><span style="font-size:8.5px">${h.muaCostumeAddr || "—"}</span></div>
+    <div><span style="font-size:7px;font-weight:700;color:#B91C1C">🏥 HOSPITAL</span><br><span style="font-size:8.5px;color:#991B1B;font-weight:600">${h.hospital || "—"}</span></div>
   </div>
   <div class="info-col" style="border-right:none">
     <div class="col-title">Key Contacts</div>
     <table>${contactRows}</table>
   </div>
 </div>
-
-<!-- HOSPITAL -->
-${h.hospital ? `<div class="hospital"><span class="icon">🏥</span> Nearest Hospital: ${h.hospital}</div>` : ""}
 
 <!-- SCENES -->
 <h2>Scenes · ${dayStrips.length} scenes · ${dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages</h2>
@@ -424,21 +414,27 @@ ${h.hospital ? `<div class="hospital"><span class="icon">🏥</span> Nearest Hos
 <!-- CAST -->
 <h2>Cast · ${dayCast.length}</h2>
 <table>
-  <thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Costume</th><th>Makeup</th><th>On Set</th><th>Pickup</th></tr></thead>
+  <thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Pickup</th><th>Costume</th><th>Makeup</th><th>On Set</th></tr></thead>
   <tbody>${castRows}</tbody>
 </table>
 
 <!-- CREW -->
 <h2>Crew · ${orderedCrew.length}</h2>
-<div class="crew-grid">
-  <table>${crewRows}</table>
+<div style="column-count:3;column-gap:12px;column-rule:0.5px solid #e0e0e0">
+  <table style="break-inside:auto">${crewRows}</table>
 </div>
 
 <!-- NOTES -->
 ${csNotes.length > 0 ? `<h2>Requirements</h2><table><tbody>${notesRows}</tbody></table>` : ""}
 
 <!-- NEXT DAY -->
-${nextDay ? `<div class="next-day"><strong>Next: ${nextDay.label} · ${fmtDate(nextDay.date)} · ${fmtTime(nextDay.callTime||"06:00")}</strong><br>${nextDayInfo}</div>` : ""}
+${nextDay && nextDayStrips.length > 0 ? `<h2>Next: ${nextDay.label} · ${fmtDate(nextDay.date)} · ${fmtTime(nextDay.callTime||"06:00")}</h2>
+<table><thead><tr><th>Sc</th><th>Type</th><th>Synopsis</th><th>Cast</th><th style="text-align:right">Pgs</th></tr></thead><tbody>
+${nextDayStrips.map(s => {
+  const castStr = (s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c ? c.roleNum : ""; }).join(", ");
+  return `<tr><td class="sc">${s.scene}</td><td class="tag ${s.type.replace("/","")}">${s.type}</td><td>${s.synopsis||""}</td><td class="cast">${castStr}</td><td class="r">${s.pages}</td></tr>`;
+}).join("")}
+</tbody></table>` : ""}
 
 <div class="footer">${project.name} · ${day.label} · ${fmtDate(day.date)} · Generated by ProduceKit</div>
 
@@ -534,9 +530,9 @@ Questions? Contact 1st AD.`;
             <HR label="First take"><TI value={firstTake} onChange={setFirstTake} color="#22c55e" bold /></HR>
             <HR label="Est. wrap"><TI value={estWrap} onChange={setEstWrap} color="#ef4444" bold /></HR>
             <div style={{borderTop:"1px solid #2a2d35",marginTop:6,paddingTop:6}}>
-              <HR label="Sunrise"><HInput value={h.sunrise||""} onChange={v=>setH({sunrise:v})} placeholder="5:48" w={68} /></HR>
-              <HR label="Sunset"><HInput value={h.sunset||""} onChange={v=>setH({sunset:v})} placeholder="20:06" w={68} /></HR>
-              <HR label="Weather"><HInput value={h.weather||""} onChange={v=>setH({weather:v})} placeholder="Clouds, 23°C" w={140} /></HR>
+              <HR label="Sunrise"><HInput value={h.sunrise||""} onChange={v=>setH({sunrise:v})} placeholder="5:48" w={80} /></HR>
+              <HR label="Sunset"><HInput value={h.sunset||""} onChange={v=>setH({sunset:v})} placeholder="20:06" w={80} /></HR>
+              <HR label="Weather"><HInput value={h.weather||""} onChange={v=>setH({weather:v})} placeholder="Partly cloudy, 18°C" w={160} /></HR>
             </div>
           </div>
 
@@ -560,9 +556,13 @@ Questions? Contact 1st AD.`;
               </select>
               {!h.basecampId && <AddressInput value={h.basecampManual||""} onChange={v=>setH({basecampManual:v})} placeholder="Type address..." style={{fontSize:10,padding:"4px 6px"}} />}
             </div>
-            <div>
+            <div style={{marginBottom:8}}>
               <div style={{fontSize:9,fontWeight:700,color:"#666",marginBottom:3}}>MUA + COSTUMES</div>
               <AddressInput value={h.muaCostumeAddr||""} onChange={v=>setH({muaCostumeAddr:v})} placeholder="Makeup & costumes..." style={{fontSize:10,padding:"4px 6px"}} />
+            </div>
+            <div>
+              <div style={{fontSize:9,fontWeight:700,color:"#ef4444",marginBottom:3}}>🏥 HOSPITAL</div>
+              <AddressInput value={h.hospital||""} onChange={v=>setH({hospital:v})} placeholder="Nearest hospital..." style={{fontSize:10,padding:"4px 6px"}} />
             </div>
           </div>
 
@@ -581,18 +581,11 @@ Questions? Contact 1st AD.`;
             })}
           </div>
         </div>
-        {/* Announcements + Hospital row */}
-        <div style={{display:"flex",gap:8,padding:"6px 20px",borderTop:"1px solid #2a2d35",background:"#12141a"}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:8,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:2}}>📢 Announcements</div>
-            <input value={h.announcements||""} onChange={e=>setH({announcements:e.target.value})} placeholder="Important notes for all crew..."
-              style={{width:"100%",background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#f59e0b",fontSize:10,fontWeight:600,padding:"3px 6px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} />
-          </div>
-          <div style={{width:280,flexShrink:0}}>
-            <div style={{fontSize:8,fontWeight:700,color:"#ef4444",textTransform:"uppercase",marginBottom:2}}>🏥 Nearest Hospital</div>
-            <input value={h.hospital||""} onChange={e=>setH({hospital:e.target.value})} placeholder="Hospital name + address..."
-              style={{width:"100%",background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#ef4444",fontSize:10,fontWeight:600,padding:"3px 6px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} />
-          </div>
+        {/* Announcements row */}
+        <div style={{padding:"6px 20px",borderTop:"1px solid #2a2d35",background:"#12141a"}}>
+          <div style={{fontSize:8,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:2}}>📢 Announcements</div>
+          <input value={h.announcements||""} onChange={e=>setH({announcements:e.target.value})} placeholder="Important notes for all crew..."
+            style={{width:"100%",background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#f59e0b",fontSize:11,fontWeight:600,padding:"4px 8px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} />
         </div>
       </div>
 
@@ -616,8 +609,8 @@ Questions? Contact 1st AD.`;
                   const s = item.data; const loc = gLoc(s.locationId);
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
-                    <td style={{...tdS,width:94}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
-                    <td style={{...tdS,width:94}}><TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/></td>
+                    <td style={{...tdS,width:78}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
+                    <td style={{...tdS,width:78}}><TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/></td>
                     <td style={{...tdS,color:"#aaa",maxWidth:200}}>{s.synopsis}</td>
                     <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>{(s.cast||[]).map(id=>{const c=cast.find(x=>x.id===id);return c?.roleNum||id;}).join(", ")}</td>
                     <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
@@ -628,8 +621,8 @@ Questions? Contact 1st AD.`;
                 const b = item.data; const bt = BREAK_TYPES.find(t=>t.id===b.type)||BREAK_TYPES[1];
                 return <tr key={b.id} style={{borderBottom:"1px solid #1e2028",background:bt.color+"08"}}>
                   <td style={{...tdS,color:bt.color,fontSize:9}}>⏸</td>
-                  <td style={{...tdS,width:94}}><TI value={b.startTime||""} onChange={v=>updateBreak(b.id,"startTime",v)} color={bt.color}/></td>
-                  <td style={{...tdS,width:94}}><TI value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
+                  <td style={{...tdS,width:78}}><TI value={b.startTime||""} onChange={v=>updateBreak(b.id,"startTime",v)} color={bt.color}/></td>
+                  <td style={{...tdS,width:78}}><TI value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
                   <td style={tdS} colSpan={3}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <input value={b.label||""} onChange={e=>updateBreak(b.id,"label",e.target.value)}
@@ -654,7 +647,7 @@ Questions? Contact 1st AD.`;
         <SH>Cast ({dayCast.length})</SH>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:780}}>
-            <thead><tr style={{borderBottom:"1px solid #333"}}>{["#","Character","Actor","Scenes","Costume","Makeup","On Set","Pickup","Notes"].map(hd=><th key={hd} style={thS}>{hd}</th>)}</tr></thead>
+            <thead><tr style={{borderBottom:"1px solid #333"}}>{["#","Character","Actor","Scenes","Pickup","Costume","Makeup","On Set","Notes"].map(hd=><th key={hd} style={thS}>{hd}</th>)}</tr></thead>
             <tbody>
               {sortedCast.map(c => {
                 const d = getCastCS(c.id); const scenes = castScenes(c.id); const pickup = getPickup(c.id);
@@ -663,10 +656,10 @@ Questions? Contact 1st AD.`;
                   <td style={{...tdS,color:"#aaa",fontWeight:600,fontSize:10}}>{c.roleName}</td>
                   <td style={{...tdS,color:"#f0f0f0",fontWeight:600}}>{c.name}</td>
                   <td style={{...tdS,color:"#888",fontSize:10,maxWidth:100}}>{scenes.map(s=>s.scene).join(", ")}</td>
-                  <td style={{...tdS,width:94}}><TI value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
-                  <td style={{...tdS,width:94}}><TI value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
-                  <td style={{...tdS,width:94}}><TI value={d.onSet} onChange={v=>updateCastCS(c.id,"onSet",v)} color="#E8C94A"/></td>
                   <td style={{...tdS,width:90}}>{pickup?<span style={{fontSize:11,fontWeight:600,color:"#22c55e"}}>{fmtTime(pickup)}</span>:<span style={{color:"#555",fontSize:10}}>—</span>}</td>
+                  <td style={{...tdS,width:88}}><TI value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
+                  <td style={{...tdS,width:88}}><TI value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
+                  <td style={{...tdS,width:88}}><TI value={d.onSet} onChange={v=>updateCastCS(c.id,"onSet",v)} color="#E8C94A"/></td>
                   <td style={{...tdS,width:110}}><input value={d.notes||""} onChange={e=>updateCastCS(c.id,"notes",e.target.value)} placeholder="..." style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:10,padding:"2px 6px",width:"100%",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/></td>
                 </tr>;
               })}
@@ -677,13 +670,13 @@ Questions? Contact 1st AD.`;
 
         {/* ── CREW — 4 col ────────────────────────────── */}
         <SH>Crew ({orderedCrew.length})</SH>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0 10px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0 6px"}}>
           {orderedCrew.map((c, i) => {
             const cc = getCrewCall(c.id); const early = isCrewEarly(c.id);
             const div = i > 0 && c.dept !== orderedCrew[i-1].dept;
-            return <div key={c.id} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 0",fontSize:10,borderTop:div?"1px solid #2a2d35":"none"}}>
-              <span style={{color:"#666",fontWeight:600,minWidth:55,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.role}</span>
-              <span style={{color:"#ccc",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+            return <div key={c.id} style={{display:"flex",alignItems:"center",gap:3,padding:"1px 0",fontSize:9,borderTop:div?"1px solid #2a2d35":"none"}}>
+              <span style={{color:"#555",fontWeight:600,minWidth:48,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:9}}>{c.role}</span>
+              <span style={{color:"#bbb",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10}}>{c.name}</span>
               <TI value={cc} onChange={v=>updateCrewCS(c.id,"call",v)} color={early?"#ef4444":"#888"}/>
             </div>;
           })}
