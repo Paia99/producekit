@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { I, spinKF } from "./config.jsx";
+import { I, T, spinKF } from "./config.jsx";
 import { defaultProject } from "./data.jsx";
 import { DashboardModule } from "./Dashboard.jsx";
 import { PeopleModule } from "./People.jsx";
@@ -44,32 +44,56 @@ export default function App() {
   const setProject = (fn) => setProjects(prev => prev.map(p => p.id === activeProjectId ? (typeof fn === "function" ? fn(p) : { ...p, ...fn }) : p));
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: "#0e1015", color: "#e0e0e0", fontFamily: "'Inter',system-ui,sans-serif", overflow: "hidden" }}>
+    <div style={{ display:"flex", height:"100vh", background:T.bg, color:T.text, fontFamily:T.fontBody, overflow:"hidden" }}>
       <style>{spinKF}</style>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet"/>
+
       {/* SIDEBAR */}
-      <div style={{ width: sidebarOpen ? 220 : 60, background: "#12141a", borderRight: "1px solid #1e2028", display: "flex", flexDirection: "column", transition: "width 0.2s", overflow: "hidden", flexShrink: 0 }}>
-        <div style={{ padding: sidebarOpen ? "16px" : "16px 8px", borderBottom: "1px solid #1e2028", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setSidebarOpen(!sidebarOpen)}>
-          <I.Film />{sidebarOpen && <span style={{ fontSize: 16, fontWeight: 800, color: "#E8C94A", whiteSpace: "nowrap" }}>ProduceKit</span>}
+      <div style={{ width:sidebarOpen?210:56, background:T.bgPanel, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", transition:"width 0.2s ease", overflow:"hidden", flexShrink:0 }}>
+        {/* Logo */}
+        <div style={{ padding:sidebarOpen?"14px 16px":"14px 10px", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", gap:10, cursor:"pointer", minHeight:48 }} onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <span style={{color:T.accent}}><I.Film /></span>
+          {sidebarOpen && <span style={{ fontSize:15, fontWeight:800, color:T.accent, whiteSpace:"nowrap", letterSpacing:"-0.03em" }}>ProduceKit</span>}
         </div>
-        {sidebarOpen && <div style={{ padding: "8px 12px", borderBottom: "1px solid #1e2028" }}>
-          <div onClick={() => setProjSwitcher(!projSwitcher)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", background: "#1a1d23", borderRadius: 6, cursor: "pointer", border: "1px solid #2a2d35" }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#f0f0f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span><I.ChevDown />
+
+        {/* Project switcher */}
+        {sidebarOpen && <div style={{ padding:"8px 10px", borderBottom:`1px solid ${T.border}` }}>
+          <div onClick={() => setProjSwitcher(!projSwitcher)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 10px", background:T.bgCard, borderRadius:T.r6, cursor:"pointer", border:`1px solid ${T.border}` }}>
+            <span style={{ fontSize:12, fontWeight:600, color:T.textHeading, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{project.name}</span>
+            <I.ChevDown />
           </div>
-          {projSwitcher && <div style={{ marginTop: 4, background: "#1a1d23", border: "1px solid #2a2d35", borderRadius: 6, overflow: "hidden" }}>
-            {projects.map(p => <div key={p.id} onClick={() => { setActiveProjectId(p.id); setProjSwitcher(false); }} style={{ padding: "8px 10px", fontSize: 12, color: p.id === activeProjectId ? "#E8C94A" : "#aaa", cursor: "pointer", background: p.id === activeProjectId ? "#E8C94A10" : "transparent", fontWeight: p.id === activeProjectId ? 700 : 400 }}>{p.name}</div>)}
+          {projSwitcher && <div style={{ marginTop:4, background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:T.r6, overflow:"hidden" }}>
+            {projects.map(p => <div key={p.id} onClick={() => { setActiveProjectId(p.id); setProjSwitcher(false); }} style={{ padding:"8px 10px", fontSize:12, color:p.id === activeProjectId ? T.accent : T.textMuted, cursor:"pointer", background:p.id === activeProjectId ? T.accentSoft : "transparent", fontWeight:p.id === activeProjectId ? 700 : 400 }}>{p.name}</div>)}
           </div>}
         </div>}
-        <nav style={{ flex: 1, padding: "8px 0" }}>
+
+        {/* Navigation */}
+        <nav style={{ flex:1, padding:"8px 0" }}>
           {NAV.map(n => {
             const Icon = n.icon;
             const active = tab === n.id;
-            return <button key={n.id} onClick={() => setTab(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: sidebarOpen ? "10px 16px" : "10px 0", background: active ? "#E8C94A12" : "transparent", border: "none", borderRight: active ? "3px solid #E8C94A" : "3px solid transparent", color: active ? "#E8C94A" : "#888", cursor: "pointer", fontSize: 13, fontWeight: active ? 700 : 500, fontFamily: "inherit", justifyContent: sidebarOpen ? "flex-start" : "center" }}><Icon />{sidebarOpen && n.label}</button>;
+            return <button key={n.id} onClick={() => setTab(n.id)} style={{
+              display:"flex", alignItems:"center", gap:10, width:"100%",
+              padding:sidebarOpen ? "9px 14px" : "9px 0", marginBottom:1,
+              background:active ? T.accentSoft : "transparent",
+              border:"none",
+              borderRight:active ? `2px solid ${T.accent}` : "2px solid transparent",
+              color:active ? T.accent : T.textDim,
+              cursor:"pointer", fontSize:12, fontWeight:active ? 700 : 500,
+              fontFamily:T.fontBody, justifyContent:sidebarOpen ? "flex-start" : "center",
+              letterSpacing:"0.01em",
+              transition:"all 0.15s ease",
+            }}><Icon />{sidebarOpen && n.label}</button>;
           })}
         </nav>
-        {sidebarOpen && <div style={{ padding: 12, borderTop: "1px solid #1e2028", fontSize: 10, color: "#444" }}>ProduceKit v0.5 · CET</div>}
+
+        {/* Footer */}
+        {sidebarOpen && <div style={{ padding:"10px 14px", borderTop:`1px solid ${T.border}`, fontSize:10, color:T.textDim, letterSpacing:"0.02em" }}>ProduceKit v0.5</div>}
       </div>
+
       {/* MAIN */}
-      <main style={{ flex: 1, overflow: "auto", padding: 28 }}>
+      <main style={{ flex:1, overflow:"auto", padding:24 }}>
         {tab === "dashboard" && <DashboardModule project={project} setTab={setTab} />}
         {tab === "people" && <PeopleModule crew={project.crew} setCrew={v => up("crew", v)} cast={project.cast} setCast={v => up("cast", v)} />}
         {tab === "scenes" && <ScenesModule strips={project.strips} setStrips={v => up("strips", v)} days={project.days} setDays={v => up("days", v)} locations={project.locations} cast={project.cast} />}
