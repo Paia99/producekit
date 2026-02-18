@@ -81,6 +81,19 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     </div>
     {viewMode==="routes"&&<div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>{days.map(d=><button key={d.id} onClick={()=>setSelDay(d.id)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:selDay===d.id?"#3b82f618":"transparent",border:`1px solid ${selDay===d.id?"#3b82f644":"#2a2d35"}`,color:selDay===d.id?"#3b82f6":"#888"}}>{d.label} · {fmtDate(d.date)}</button>)}</div>
+      {/* Cast call times info for this day */}
+      {day&&(()=>{const dayStrips=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const dayCastIds=[...new Set(dayStrips.flatMap(s=>s.cast))];const dayCastList=dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(dayCastList.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:8,padding:"10px 14px",marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",marginBottom:6}}>Cast Call Times — {day.label}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:"4px 16px"}}>
+          {dayCastList.map(c=>{const csData=day.callSheet?.cast?.[String(c.id)];const costume=csData?.costume||"";const makeup=csData?.makeup||"";const onSet=csData?.onSet||"";return<div key={c.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,padding:"2px 0"}}>
+            <span style={{color:"#E8C94A",fontWeight:800,minWidth:20}}>#{c.roleNum}</span>
+            <span style={{color:"#ccc",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+            {costume&&<span style={{color:"#f59e0b"}}>C:{costume}</span>}
+            {makeup&&<span style={{color:"#a855f7"}}>M:{makeup}</span>}
+            {onSet&&<span style={{color:"#22c55e"}}>Set:{onSet}</span>}
+          </div>;})}
+        </div>
+      </div>;})()}
       {calcErr&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> {calcErr}</div>}
       {dayR.length===0&&<div style={{textAlign:"center",padding:50,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>{"\u{1F690}"}</div><div style={{fontSize:14,marginBottom:8}}>No routes for {day?.label||"this day"}</div><button onClick={openNR} style={BP}>Create Route</button></div>}
       {dayR.map(route=>{const v=vehicles.find(x=>x.id===route.vehicleId);const vt=VEHICLE_TYPES.find(t=>t.id===v?.type);const drv=crew.find(c=>c.id===v?.driverId);const pk=route.stops.filter(s=>s.type==="pickup");const dest=route.stops.find(s=>s.type==="destination");const dLoc=locations.find(l=>l.id===dest?.locationId);
