@@ -100,11 +100,11 @@ const CallSheetModule = ({ project, setProject }) => {
     setH({
       _initialized: true,
       transportMin: 0,
-      // No callOnSet/firstTake/estWrap stored — always computed unless manually overridden
       _callOnSetOverride: "", _firstTakeOverride: "", _estWrapOverride: "",
       sunrise: "", sunset: "", weather: "",
       locationId: "", basecampId: "", basecampManual: "",
       muaCostumeAddr: "",
+      hospital: "", announcements: "",
       contacts,
     });
   }, [selDayId]);
@@ -264,61 +264,186 @@ const CallSheetModule = ({ project, setProject }) => {
     const loc = gLoc(h.locationId);
     const basecamp = h.basecampId ? gLoc(h.basecampId) : null;
     const basecampStr = basecamp ? `${basecamp.name}, ${basecamp.address}` : h.basecampManual || "";
-    const scenesHtml = dayStrips.map(s => {
+
+    // Build scene rows with interleaved breaks
+    const breakMap = {};
+    csBreaks.forEach(b => { if (!breakMap[b.afterScene]) breakMap[b.afterScene] = []; breakMap[b.afterScene].push(b); });
+    let sceneRows = "";
+    dayStrips.forEach(s => {
       const sl = gLoc(s.locationId);
-      const castStr = (s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c ? `${c.roleNum}` : ""; }).join(", ");
-      return `<tr><td style="font-weight:700">${s.scene}</td><td>${fmtTime(s.startTime)}–${fmtTime(s.endTime)}</td><td>${s.synopsis||""}</td><td>${castStr}</td><td>${s.type}</td><td>${s.pages}</td><td>${sl?.name||"—"}</td></tr>`;
-    }).join("");
-    const breaksHtml = csBreaks.map(b => `<tr style="background:#fffbeb"><td>⏸</td><td>${fmtTime(b.startTime)}–${fmtTime(b.endTime)}</td><td colspan="3"><strong>${b.label}</strong> (${b.duration}min)</td><td></td><td></td></tr>`).join("");
-    const castHtml = sortedCast.map(c => {
+      const castStr = (s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c ? c.roleNum : ""; }).join(", ");
+      sceneRows += `<tr><td class="sc">${s.scene}</td><td class="mono">${fmtTime(s.startTime)}</td><td class="mono">${fmtTime(s.endTime)}</td><td>${s.synopsis||""}</td><td class="cast">${castStr}</td><td class="tag ${s.type.replace("/","")}">${s.type}</td><td class="r">${s.pages}</td><td>${sl?.name||""}</td></tr>`;
+      if (breakMap[s.id]) breakMap[s.id].forEach(b => {
+        sceneRows += `<tr class="brk"><td></td><td class="mono">${fmtTime(b.startTime)}</td><td class="mono">${fmtTime(b.endTime)}</td><td colspan="4"><strong>${b.label}</strong> · ${b.duration} min</td><td></td></tr>`;
+      });
+    });
+
+    const castRows = sortedCast.map(c => {
       const d = getCastCS(c.id); const scenes = castScenes(c.id); const pickup = getPickup(c.id);
-      return `<tr><td style="font-weight:700">${c.roleNum}</td><td>${c.roleName}</td><td>${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td>${fmtTime(d.costume)}</td><td>${fmtTime(d.makeup)}</td><td>${fmtTime(d.onSet)}</td><td>${pickup ? fmtTime(pickup) : "—"}</td></tr>`;
-    }).join("");
-    const crewHtml = orderedCrew.map((c, i) => {
-      const cc = getCrewCall(c.id); const div = i > 0 && c.dept !== orderedCrew[i-1].dept;
-      return `${div ? '<tr><td colspan="3" style="border-top:1px solid #ccc;padding:2px"></td></tr>' : ''}<tr><td style="color:#666">${c.dept}</td><td>${c.name}</td><td style="font-weight:600">${fmtTime(cc)}</td></tr>`;
-    }).join("");
-    const notesHtml = csNotes.map(n => `<tr><td style="font-weight:600;width:100px">${n.dept}</td><td>${n.text}</td></tr>`).join("");
-    const contactsHtml = HEADER_ROLES.map(({ key, label }) => {
-      const c = hContacts[key] || {};
-      return c.name ? `<tr><td style="color:#666">${label}</td><td>${c.name}</td><td>${c.phone||""}</td></tr>` : "";
+      return `<tr><td class="sc">${c.roleNum}</td><td>${c.roleName}</td><td class="b">${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td class="mono">${fmtTime(d.costume)}</td><td class="mono">${fmtTime(d.makeup)}</td><td class="mono b">${fmtTime(d.onSet)}</td><td class="mono">${pickup ? fmtTime(pickup) : "—"}</td></tr>`;
     }).join("");
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Call Sheet — ${project.name} — ${day.label}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111;padding:12px}
-table{width:100%;border-collapse:collapse}th,td{padding:3px 6px;text-align:left;border-bottom:1px solid #e0e0e0;font-size:9px}
-th{font-weight:700;text-transform:uppercase;color:#555;font-size:8px;border-bottom:2px solid #333}
-h1{font-size:16px;margin:0}h2{font-size:11px;font-weight:700;text-transform:uppercase;color:#333;margin:12px 0 4px;border-bottom:1px solid #333;padding-bottom:2px}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:8px;border-bottom:1px solid #ccc;padding-bottom:8px}
-.lbl{font-size:8px;font-weight:700;color:#666;text-transform:uppercase}.val{font-size:11px;font-weight:700}
-@media print{body{padding:8px}@page{margin:8mm;size:A4 landscape}}
+    // Crew grouped by department
+    let crewRows = ""; let lastDept = "";
+    orderedCrew.forEach(c => {
+      const cc = getCrewCall(c.id);
+      if (c.dept !== lastDept) { crewRows += `<tr class="dept-hdr"><td colspan="3">${c.dept}</td></tr>`; lastDept = c.dept; }
+      crewRows += `<tr><td>${c.role}</td><td>${c.name}</td><td class="mono b">${fmtTime(cc)}</td></tr>`;
+    });
+
+    const notesRows = csNotes.map(n => `<tr><td class="b" style="width:90px">${n.dept}</td><td>${(n.text||"").replace(/\n/g,"<br>")}</td></tr>`).join("");
+
+    const contactRows = HEADER_ROLES.map(({ key, label }) => {
+      const c = hContacts[key] || {}; if (!c.name) return "";
+      return `<tr><td class="lbl2">${label}</td><td class="b">${c.name}</td><td class="mono">${c.phone||""}</td></tr>`;
+    }).join("");
+
+    const nextDayInfo = nextDay && nextDayStrips.length > 0
+      ? nextDayStrips.map(s => `Sc.${s.scene} ${s.type} — ${s.synopsis} (${s.pages}pg)`).join(" · ")
+      : "";
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Call Sheet — ${project.name} — ${day.label}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:9px;color:#111;padding:16px 20px;max-width:210mm}
+@page{margin:6mm;size:A4 portrait}
+@media print{body{padding:0}}
+
+/* Header bar */
+.top-bar{display:flex;justify-content:space-between;align-items:center;background:#111;color:#fff;padding:8px 14px;border-radius:4px;margin-bottom:6px}
+.top-bar h1{font-size:15px;font-weight:800;letter-spacing:-0.02em}
+.top-bar .day{font-size:18px;font-weight:900}
+.top-bar .sub{font-size:9px;opacity:0.6;font-weight:400}
+
+/* Announcements */
+.announce{background:#FEF3C7;border:1px solid #F59E0B;border-radius:3px;padding:5px 10px;font-size:9px;font-weight:600;margin-bottom:6px;color:#92400E}
+
+/* 3-column info grid */
+.info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid #333;border-radius:3px;margin-bottom:6px;overflow:hidden}
+.info-col{padding:6px 10px;border-right:1px solid #ddd}
+.info-col:last-child{border-right:none}
+.info-col .col-title{font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:2px}
+.info-row{display:flex;justify-content:space-between;padding:1px 0;font-size:8.5px}
+.info-row .k{color:#666;font-weight:600;min-width:65px}
+.info-row .v{font-weight:700;text-align:right}
+.info-row .v.green{color:#16a34a}
+.info-row .v.red{color:#dc2626}
+.info-row .v.big{font-size:10px}
+
+/* Section headers */
+h2{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#333;margin:8px 0 3px;padding:2px 0;border-bottom:1.5px solid #111}
+
+/* Tables */
+table{width:100%;border-collapse:collapse}
+th{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#666;padding:2px 4px;border-bottom:1.5px solid #333;text-align:left}
+td{padding:2px 4px;font-size:8.5px;border-bottom:0.5px solid #e5e5e5;vertical-align:top}
+.sc{font-weight:800;width:28px}
+.mono{font-family:'Courier New',monospace;font-size:8px;font-weight:600}
+.b{font-weight:700}
+.r{text-align:right}
+.cast{color:#92400E;font-weight:600;font-size:8px}
+.brk td{background:#FFFBEB;font-size:8px;color:#92400E}
+.dept-hdr td{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;color:#888;padding:4px 4px 1px;border-bottom:1px solid #ccc;background:#f9f9f9}
+.lbl2{font-size:7.5px;color:#666;font-weight:600;width:75px}
+
+/* Tag colors */
+.tag{font-size:7px;font-weight:700;padding:1px 4px;border-radius:2px;display:inline-block;text-align:center;width:38px}
+.DINT{background:#FEF3C7;color:#92400E}
+.DEXT{background:#FFEDD5;color:#9A3412}
+.NINT{background:#DBEAFE;color:#1E40AF}
+.NEXT{background:#EDE9FE;color:#5B21B6}
+
+/* Crew 3-col */
+.crew-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px}
+
+/* Hospital */
+.hospital{display:flex;align-items:center;gap:6px;background:#FEF2F2;border:1px solid #FECACA;border-radius:3px;padding:4px 10px;margin-bottom:6px;font-size:8.5px;color:#991B1B;font-weight:600}
+.hospital .icon{font-size:12px}
+
+/* Next day */
+.next-day{background:#f5f5f5;border-radius:3px;padding:6px 10px;font-size:8px;color:#555;margin-top:6px}
+.next-day strong{color:#333}
+
+/* Footer */
+.footer{margin-top:8px;text-align:center;font-size:7px;color:#aaa;border-top:0.5px solid #ddd;padding-top:4px}
 </style></head><body>
-<div class="hdr"><div><h1>${project.name}</h1><div style="font-size:10px;color:#666">${project.production||""}${project.idec ? " · IDEC: "+project.idec : ""}</div></div>
-<div style="text-align:right"><div style="font-size:16px;font-weight:800">${day.label}</div><div style="font-size:11px;color:#666">${fmtDate(day.date)}</div></div></div>
-<div class="grid3">
-<div><div class="lbl">Schedule</div>
-<div>Shift: <span class="val">${fmtTime(shiftStart)}–${fmtTime(shiftEnd)}</span></div>
-<div>Call on set: <span class="val">${fmtTime(callOnSet)}</span></div>
-<div>First take: <span class="val" style="color:#16a34a">${fmtTime(firstTake)}</span></div>
-<div>Est. wrap: <span class="val" style="color:#dc2626">${fmtTime(estWrap)}</span></div>
-${h.sunrise ? `<div>Sunrise: ${h.sunrise} · Sunset: ${h.sunset||"—"}</div>` : ""}
-${h.weather ? `<div>Weather: ${h.weather}</div>` : ""}</div>
-<div><div class="lbl">Addresses</div>
-<div><strong>Location:</strong> ${loc ? `${loc.name}, ${loc.address}` : "—"}</div>
-<div><strong>Basecamp:</strong> ${basecampStr || "—"}</div>
-<div><strong>MUA/Costumes:</strong> ${h.muaCostumeAddr || "—"}</div></div>
-<div><div class="lbl">Key Contacts</div><table>${contactsHtml}</table></div>
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <div>
+    <h1>${project.name}</h1>
+    <div class="sub">${project.production||""}${project.idec ? " · IDEC: "+project.idec : ""}</div>
+  </div>
+  <div style="text-align:right">
+    <div class="day">${day.label}</div>
+    <div class="sub">${fmtDate(day.date)}</div>
+  </div>
 </div>
-<h2>Scenes (${dayStrips.length} · ${dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages)</h2>
-<table><thead><tr><th>Sc</th><th>Time</th><th>Synopsis</th><th>Cast</th><th>Type</th><th>Pgs</th><th>Location</th></tr></thead><tbody>${scenesHtml}${breaksHtml}</tbody></table>
-<h2>Cast (${dayCast.length})</h2>
-<table><thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Costume</th><th>Makeup</th><th>On Set</th><th>Pickup</th></tr></thead><tbody>${castHtml}</tbody></table>
-<h2>Crew (${orderedCrew.length})</h2>
-<table><tbody>${crewHtml}</tbody></table>
-${csNotes.length > 0 ? `<h2>Requirements</h2><table><tbody>${notesHtml}</tbody></table>` : ""}
-${nextDay ? `<h2>Next Day — ${nextDay.label} · ${fmtDate(nextDay.date)}</h2><div style="font-size:10px;color:#555">${nextDayStrips.map(s => `Sc.${s.scene} ${s.type} — ${s.synopsis} (${s.pages}pg)`).join(" · ")}</div>` : ""}
-<script>setTimeout(()=>window.print(),300)</script></body></html>`;
+
+<!-- ANNOUNCEMENTS -->
+${h.announcements ? `<div class="announce">📢 ${h.announcements}</div>` : ""}
+
+<!-- INFO GRID -->
+<div class="info-grid">
+  <div class="info-col">
+    <div class="col-title">Schedule</div>
+    <div class="info-row"><span class="k">Shift</span><span class="v big">${fmtTime(shiftStart)} – ${fmtTime(shiftEnd)}</span></div>
+    <div class="info-row"><span class="k">Transport</span><span class="v">${transportMin > 0 ? transportMin+" min" : "—"}</span></div>
+    <div class="info-row"><span class="k">Call on set</span><span class="v big">${fmtTime(callOnSet)}</span></div>
+    <div class="info-row"><span class="k">First take</span><span class="v big green">${fmtTime(firstTake)}</span></div>
+    <div class="info-row"><span class="k">Est. wrap</span><span class="v big red">${fmtTime(estWrap)}</span></div>
+    <div style="border-top:0.5px solid #ddd;margin-top:2px;padding-top:2px">
+      <div class="info-row"><span class="k">Sunrise</span><span class="v">${h.sunrise||"—"}</span></div>
+      <div class="info-row"><span class="k">Sunset</span><span class="v">${h.sunset||"—"}</span></div>
+      <div class="info-row"><span class="k">Weather</span><span class="v">${h.weather||"—"}</span></div>
+    </div>
+  </div>
+  <div class="info-col">
+    <div class="col-title">Addresses</div>
+    <div style="margin-bottom:3px"><span style="font-size:7px;font-weight:700;color:#888">LOCATION</span><br><span style="font-weight:700;font-size:9px">${loc ? loc.name : "—"}</span>${loc ? `<br><span style="color:#666">${loc.address}</span>` : ""}</div>
+    <div style="margin-bottom:3px"><span style="font-size:7px;font-weight:700;color:#888">BASECAMP</span><br><span style="font-size:8.5px">${basecampStr || "—"}</span></div>
+    <div><span style="font-size:7px;font-weight:700;color:#888">MUA / COSTUMES</span><br><span style="font-size:8.5px">${h.muaCostumeAddr || "—"}</span></div>
+  </div>
+  <div class="info-col" style="border-right:none">
+    <div class="col-title">Key Contacts</div>
+    <table>${contactRows}</table>
+  </div>
+</div>
+
+<!-- HOSPITAL -->
+${h.hospital ? `<div class="hospital"><span class="icon">🏥</span> Nearest Hospital: ${h.hospital}</div>` : ""}
+
+<!-- SCENES -->
+<h2>Scenes · ${dayStrips.length} scenes · ${dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages</h2>
+<table>
+  <thead><tr><th>Sc</th><th>From</th><th>To</th><th>Synopsis</th><th>Cast</th><th>Type</th><th style="text-align:right">Pgs</th><th>Location</th></tr></thead>
+  <tbody>${sceneRows}</tbody>
+</table>
+
+<!-- CAST -->
+<h2>Cast · ${dayCast.length}</h2>
+<table>
+  <thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Costume</th><th>Makeup</th><th>On Set</th><th>Pickup</th></tr></thead>
+  <tbody>${castRows}</tbody>
+</table>
+
+<!-- CREW -->
+<h2>Crew · ${orderedCrew.length}</h2>
+<div class="crew-grid">
+  <table>${crewRows}</table>
+</div>
+
+<!-- NOTES -->
+${csNotes.length > 0 ? `<h2>Requirements</h2><table><tbody>${notesRows}</tbody></table>` : ""}
+
+<!-- NEXT DAY -->
+${nextDay ? `<div class="next-day"><strong>Next: ${nextDay.label} · ${fmtDate(nextDay.date)} · ${fmtTime(nextDay.callTime||"06:00")}</strong><br>${nextDayInfo}</div>` : ""}
+
+<div class="footer">${project.name} · ${day.label} · ${fmtDate(day.date)} · Generated by ProduceKit</div>
+
+<script>setTimeout(()=>window.print(),400)</script>
+</body></html>`;
 
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
@@ -454,6 +579,19 @@ Questions? Contact 1st AD.`;
                   style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:9,padding:"2px 4px",width:90,fontFamily:"inherit",outline:"none",flexShrink:0}} />
               </div>;
             })}
+          </div>
+        </div>
+        {/* Announcements + Hospital row */}
+        <div style={{display:"flex",gap:8,padding:"6px 20px",borderTop:"1px solid #2a2d35",background:"#12141a"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:8,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:2}}>📢 Announcements</div>
+            <input value={h.announcements||""} onChange={e=>setH({announcements:e.target.value})} placeholder="Important notes for all crew..."
+              style={{width:"100%",background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#f59e0b",fontSize:10,fontWeight:600,padding:"3px 6px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} />
+          </div>
+          <div style={{width:280,flexShrink:0}}>
+            <div style={{fontSize:8,fontWeight:700,color:"#ef4444",textTransform:"uppercase",marginBottom:2}}>🏥 Nearest Hospital</div>
+            <input value={h.hospital||""} onChange={e=>setH({hospital:e.target.value})} placeholder="Hospital name + address..."
+              style={{width:"100%",background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#ef4444",fontSize:10,fontWeight:600,padding:"3px 6px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} />
           </div>
         </div>
       </div>
