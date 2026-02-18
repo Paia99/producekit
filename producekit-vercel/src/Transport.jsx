@@ -81,18 +81,24 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     </div>
     {viewMode==="routes"&&<div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>{days.map(d=><button key={d.id} onClick={()=>setSelDay(d.id)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:selDay===d.id?"#3b82f618":"transparent",border:`1px solid ${selDay===d.id?"#3b82f644":"#2a2d35"}`,color:selDay===d.id?"#3b82f6":"#888"}}>{d.label} · {fmtDate(d.date)}</button>)}</div>
-      {/* Cast call times info for this day */}
-      {day&&(()=>{const dayStrips=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const dayCastIds=[...new Set(dayStrips.flatMap(s=>s.cast))];const dayCastList=dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(dayCastList.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:8,padding:"10px 14px",marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",marginBottom:6}}>Cast Call Times — {day.label}</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:"4px 16px"}}>
-          {dayCastList.map(c=>{const csData=day.callSheet?.cast?.[String(c.id)];const costume=csData?.costume||"";const makeup=csData?.makeup||"";const onSet=csData?.onSet||"";return<div key={c.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,padding:"2px 0"}}>
-            <span style={{color:"#E8C94A",fontWeight:800,minWidth:20}}>#{c.roleNum}</span>
-            <span style={{color:"#ccc",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-            {costume&&<span style={{color:"#f59e0b"}}>C:{costume}</span>}
-            {makeup&&<span style={{color:"#a855f7"}}>M:{makeup}</span>}
-            {onSet&&<span style={{color:"#22c55e"}}>Set:{onSet}</span>}
-          </div>;})}
+      {/* Cast call times for this day — clean table */}
+      {day&&(()=>{const dayStrips=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const dayCastIds=[...new Set(dayStrips.flatMap(s=>s.cast))];const dayCastList=dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(dayCastList.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:8,marginBottom:16,overflow:"hidden"}}>
+        <div style={{padding:"8px 12px",borderBottom:"1px solid #1e2028",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.04em"}}>Cast Call Times — {day.label}</span>
+          <span style={{fontSize:9,color:"#555"}}>Set times in Call Sheet</span>
         </div>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["#","Name","Costume","Makeup","On Set"].map(h=><th key={h} style={{padding:"4px 10px",fontSize:9,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left",borderBottom:"1px solid #1a1d23"}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {dayCastList.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<tr key={c.id} style={{borderBottom:"1px solid #1a1d23"}}>
+              <td style={{padding:"4px 10px",fontSize:11,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
+              <td style={{padding:"4px 10px",fontSize:11,fontWeight:600,color:"#ccc"}}>{c.name}</td>
+              <td style={{padding:"4px 10px",fontSize:11,fontWeight:600,color:"#f59e0b",fontFamily:"monospace"}}>{d?.costume||"—"}</td>
+              <td style={{padding:"4px 10px",fontSize:11,fontWeight:600,color:"#a855f7",fontFamily:"monospace"}}>{d?.makeup||"—"}</td>
+              <td style={{padding:"4px 10px",fontSize:11,fontWeight:600,color:"#22c55e",fontFamily:"monospace"}}>{d?.onSet||"—"}</td>
+            </tr>;})}
+          </tbody>
+        </table>
       </div>;})()}
       {calcErr&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> {calcErr}</div>}
       {dayR.length===0&&<div style={{textAlign:"center",padding:50,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>{"\u{1F690}"}</div><div style={{fontSize:14,marginBottom:8}}>No routes for {day?.label||"this day"}</div><button onClick={openNR} style={BP}>Create Route</button></div>}
@@ -195,21 +201,21 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         </div>)}
         <button onClick={addSt} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
       </div>
-      {/* Cast call times reference for this day */}
-      {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,padding:"8px 10px",marginBottom:12}}>
-        <div style={{fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase",marginBottom:4}}>Cast Call Times — {day.label} (for transport planning)</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"2px 16px"}}>
-          {cl.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<div key={c.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,padding:"2px 0"}}>
-            <span style={{color:"#E8C94A",fontWeight:800,minWidth:22}}>#{c.roleNum}</span>
-            <span style={{color:"#ccc",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
-            <span style={{color:"#f59e0b",fontWeight:600}}>{d?.costume||"—"}</span>
-            <span style={{fontSize:8,color:"#555"}}>C</span>
-            <span style={{color:"#a855f7",fontWeight:600}}>{d?.makeup||"—"}</span>
-            <span style={{fontSize:8,color:"#555"}}>M</span>
-            <span style={{color:"#22c55e",fontWeight:600}}>{d?.onSet||"—"}</span>
-            <span style={{fontSize:8,color:"#555"}}>Set</span>
-          </div>;})}
-        </div>
+      {/* Cast call times reference */}
+      {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,marginBottom:12,overflow:"hidden"}}>
+        <div style={{padding:"6px 10px",borderBottom:"1px solid #1a1d23",fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase"}}>Cast — {day.label} · earliest arrival needed</div>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["#","Name","Costume","Makeup","On Set"].map(h=><th key={h} style={{padding:"3px 8px",fontSize:8,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left"}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {cl.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<tr key={c.id}>
+              <td style={{padding:"3px 8px",fontSize:10,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
+              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#ccc"}}>{c.name}</td>
+              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#f59e0b",fontFamily:"monospace"}}>{d?.costume||"—"}</td>
+              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#a855f7",fontFamily:"monospace"}}>{d?.makeup||"—"}</td>
+              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#22c55e",fontFamily:"monospace"}}>{d?.onSet||"—"}</td>
+            </tr>;})}
+          </tbody>
+        </table>
       </div>;})()}
       <div><label style={LS}>Notes</label><textarea value={rf.notes||""} onChange={e=>setRf({...rf,notes:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editRoute!=="new"&&<button onClick={()=>{setRoutes(p=>p.filter(r=>r.id!==rf.id));setEditRoute(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditRoute(null)} style={BS}>Cancel</button><button onClick={saveR} style={BP}>Save</button></div></div>

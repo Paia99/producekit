@@ -250,6 +250,7 @@ const CallSheetModule = ({ project, setProject }) => {
   const sortedCast = [...dayCast].sort((a, b) => (getCastCS(a.id).onSet||"99:99").localeCompare(getCastCS(b.id).onSet||"99:99"));
   const nextDayStrips = nextDay ? nextDay.strips.map(sid => strips.find(s => s.id === sid)).filter(Boolean) : [];
   const sceneOrder = buildSceneOrder();
+  const [showSendModal, setShowSendModal] = useState(false);
 
   const HR = ({ label, children }) => (
     <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}}>
@@ -258,13 +259,117 @@ const CallSheetModule = ({ project, setProject }) => {
     </div>
   );
 
+  /* ── Export PDF — render print-friendly page ───────────── */
+  const exportPDF = () => {
+    const loc = gLoc(h.locationId);
+    const basecamp = h.basecampId ? gLoc(h.basecampId) : null;
+    const basecampStr = basecamp ? `${basecamp.name}, ${basecamp.address}` : h.basecampManual || "";
+    const scenesHtml = dayStrips.map(s => {
+      const sl = gLoc(s.locationId);
+      const castStr = (s.cast||[]).map(id => { const c = cast.find(x=>x.id===id); return c ? `${c.roleNum}` : ""; }).join(", ");
+      return `<tr><td style="font-weight:700">${s.scene}</td><td>${fmtTime(s.startTime)}–${fmtTime(s.endTime)}</td><td>${s.synopsis||""}</td><td>${castStr}</td><td>${s.type}</td><td>${s.pages}</td><td>${sl?.name||"—"}</td></tr>`;
+    }).join("");
+    const breaksHtml = csBreaks.map(b => `<tr style="background:#fffbeb"><td>⏸</td><td>${fmtTime(b.startTime)}–${fmtTime(b.endTime)}</td><td colspan="3"><strong>${b.label}</strong> (${b.duration}min)</td><td></td><td></td></tr>`).join("");
+    const castHtml = sortedCast.map(c => {
+      const d = getCastCS(c.id); const scenes = castScenes(c.id); const pickup = getPickup(c.id);
+      return `<tr><td style="font-weight:700">${c.roleNum}</td><td>${c.roleName}</td><td>${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td>${fmtTime(d.costume)}</td><td>${fmtTime(d.makeup)}</td><td>${fmtTime(d.onSet)}</td><td>${pickup ? fmtTime(pickup) : "—"}</td></tr>`;
+    }).join("");
+    const crewHtml = orderedCrew.map((c, i) => {
+      const cc = getCrewCall(c.id); const div = i > 0 && c.dept !== orderedCrew[i-1].dept;
+      return `${div ? '<tr><td colspan="3" style="border-top:1px solid #ccc;padding:2px"></td></tr>' : ''}<tr><td style="color:#666">${c.dept}</td><td>${c.name}</td><td style="font-weight:600">${fmtTime(cc)}</td></tr>`;
+    }).join("");
+    const notesHtml = csNotes.map(n => `<tr><td style="font-weight:600;width:100px">${n.dept}</td><td>${n.text}</td></tr>`).join("");
+    const contactsHtml = HEADER_ROLES.map(({ key, label }) => {
+      const c = hContacts[key] || {};
+      return c.name ? `<tr><td style="color:#666">${label}</td><td>${c.name}</td><td>${c.phone||""}</td></tr>` : "";
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Call Sheet — ${project.name} — ${day.label}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111;padding:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:3px 6px;text-align:left;border-bottom:1px solid #e0e0e0;font-size:9px}
+th{font-weight:700;text-transform:uppercase;color:#555;font-size:8px;border-bottom:2px solid #333}
+h1{font-size:16px;margin:0}h2{font-size:11px;font-weight:700;text-transform:uppercase;color:#333;margin:12px 0 4px;border-bottom:1px solid #333;padding-bottom:2px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:8px;border-bottom:1px solid #ccc;padding-bottom:8px}
+.lbl{font-size:8px;font-weight:700;color:#666;text-transform:uppercase}.val{font-size:11px;font-weight:700}
+@media print{body{padding:8px}@page{margin:8mm;size:A4 landscape}}
+</style></head><body>
+<div class="hdr"><div><h1>${project.name}</h1><div style="font-size:10px;color:#666">${project.production||""}${project.idec ? " · IDEC: "+project.idec : ""}</div></div>
+<div style="text-align:right"><div style="font-size:16px;font-weight:800">${day.label}</div><div style="font-size:11px;color:#666">${fmtDate(day.date)}</div></div></div>
+<div class="grid3">
+<div><div class="lbl">Schedule</div>
+<div>Shift: <span class="val">${fmtTime(shiftStart)}–${fmtTime(shiftEnd)}</span></div>
+<div>Call on set: <span class="val">${fmtTime(callOnSet)}</span></div>
+<div>First take: <span class="val" style="color:#16a34a">${fmtTime(firstTake)}</span></div>
+<div>Est. wrap: <span class="val" style="color:#dc2626">${fmtTime(estWrap)}</span></div>
+${h.sunrise ? `<div>Sunrise: ${h.sunrise} · Sunset: ${h.sunset||"—"}</div>` : ""}
+${h.weather ? `<div>Weather: ${h.weather}</div>` : ""}</div>
+<div><div class="lbl">Addresses</div>
+<div><strong>Location:</strong> ${loc ? `${loc.name}, ${loc.address}` : "—"}</div>
+<div><strong>Basecamp:</strong> ${basecampStr || "—"}</div>
+<div><strong>MUA/Costumes:</strong> ${h.muaCostumeAddr || "—"}</div></div>
+<div><div class="lbl">Key Contacts</div><table>${contactsHtml}</table></div>
+</div>
+<h2>Scenes (${dayStrips.length} · ${dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages)</h2>
+<table><thead><tr><th>Sc</th><th>Time</th><th>Synopsis</th><th>Cast</th><th>Type</th><th>Pgs</th><th>Location</th></tr></thead><tbody>${scenesHtml}${breaksHtml}</tbody></table>
+<h2>Cast (${dayCast.length})</h2>
+<table><thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Costume</th><th>Makeup</th><th>On Set</th><th>Pickup</th></tr></thead><tbody>${castHtml}</tbody></table>
+<h2>Crew (${orderedCrew.length})</h2>
+<table><tbody>${crewHtml}</tbody></table>
+${csNotes.length > 0 ? `<h2>Requirements</h2><table><tbody>${notesHtml}</tbody></table>` : ""}
+${nextDay ? `<h2>Next Day — ${nextDay.label} · ${fmtDate(nextDay.date)}</h2><div style="font-size:10px;color:#555">${nextDayStrips.map(s => `Sc.${s.scene} ${s.type} — ${s.synopsis} (${s.pages}pg)`).join(" · ")}</div>` : ""}
+<script>setTimeout(()=>window.print(),300)</script></body></html>`;
+
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  /* ── Send email — build mailing list + compose ─────────── */
+  const buildEmailData = () => {
+    const allEmails = [];
+    crew.forEach(c => { if (c.email) allEmails.push(c.email); });
+    cast.forEach(c => { if (c.email) allEmails.push(c.email); });
+    const unique = [...new Set(allEmails)];
+    const loc = gLoc(h.locationId);
+    const subject = `Call Sheet — ${project.name} — ${day.label} — ${fmtDate(day.date)}`;
+    const body = `${project.name} — ${day.label} — ${fmtDate(day.date)}
+
+Shift: ${fmtTime(shiftStart)}–${fmtTime(shiftEnd)}
+Call on set: ${fmtTime(callOnSet)}
+First take: ${fmtTime(firstTake)}
+Est. wrap: ${fmtTime(estWrap)}
+
+Location: ${loc ? `${loc.name}, ${loc.address}` : "TBD"}
+
+Scenes: ${dayStrips.map(s => `Sc.${s.scene}`).join(", ")} (${dayStrips.reduce((s,x)=>s+(x.pages||0),0).toFixed(1)} pages)
+
+Please find the call sheet attached.
+Check your individual call times and transport details.
+
+Questions? Contact 1st AD.`;
+    return { emails: unique, subject, body };
+  };
+
   if (!day) return <div>
     <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0",marginBottom:12}}>Call Sheet</h2>
     <div style={{background:"#1a1d23",border:"1px dashed #2a2d35",borderRadius:10,padding:30,textAlign:"center",color:"#555",fontSize:13}}>No shooting days.</div>
   </div>;
 
+  const emailData = buildEmailData();
+
   return <div>
-    <div style={{marginBottom:16}}><h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Call Sheet</h2></div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Call Sheet</h2>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={exportPDF} style={{background:"#3b82f618",border:"1px solid #3b82f633",borderRadius:6,color:"#3b82f6",fontSize:11,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+          Export PDF
+        </button>
+        <button onClick={() => setShowSendModal(true)} style={{background:"#E8C94A",border:"none",borderRadius:6,color:"#111",fontSize:11,fontWeight:700,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+          <I.Send/> Send Call Sheet
+        </button>
+      </div>
+    </div>
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
       {days.map(d => <button key={d.id} onClick={() => setSelDayId(d.id)} style={{
         padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
@@ -487,6 +592,65 @@ const CallSheetModule = ({ project, setProject }) => {
         </div>}
       </div>
     </div>
+
+    {/* ══════════ SEND MODAL ════════════════════════ */}
+    {showSendModal && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,backdropFilter:"blur(6px)"}} onClick={() => setShowSendModal(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#171a21",border:"1px solid #1f222b",borderRadius:12,width:600,maxWidth:"95vw",maxHeight:"85vh",overflow:"auto",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 20px",borderBottom:"1px solid #1f222b"}}>
+          <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#f0f1f4"}}>Send Call Sheet — {day.label}</h3>
+          <button onClick={() => setShowSendModal(false)} style={{background:"none",border:"none",color:"#5a5e6a",cursor:"pointer",padding:4}}><I.X/></button>
+        </div>
+        <div style={{padding:20}}>
+          {/* Step 1: Export PDF */}
+          <div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:8,padding:14,marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#f0f0f0",marginBottom:2}}>1. Export PDF</div>
+                <div style={{fontSize:10,color:"#888"}}>Save as PDF using your browser's print dialog (Ctrl+P → Save as PDF)</div>
+              </div>
+              <button onClick={exportPDF} style={{background:"#3b82f618",border:"1px solid #3b82f633",borderRadius:6,color:"#3b82f6",fontSize:11,fontWeight:700,padding:"8px 16px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Export PDF</button>
+            </div>
+          </div>
+
+          {/* Step 2: Mailing list */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#f0f0f0",marginBottom:6}}>2. Mailing List ({emailData.emails.length} recipients)</div>
+            <div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,padding:"8px 10px",fontSize:10,color:"#8b8f9a",maxHeight:80,overflow:"auto",lineHeight:1.6,wordBreak:"break-all"}}>
+              {emailData.emails.join("; ")}
+            </div>
+            <button onClick={() => { navigator.clipboard.writeText(emailData.emails.join("; ")); }} style={{marginTop:6,background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,color:"#888",fontSize:10,fontWeight:600,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+              <I.Copy/> Copy all emails
+            </button>
+          </div>
+
+          {/* Step 3: Email compose */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#f0f0f0",marginBottom:6}}>3. Email</div>
+            <div style={{marginBottom:8}}>
+              <label style={{fontSize:10,fontWeight:600,color:"#666",textTransform:"uppercase",display:"block",marginBottom:3}}>Subject</label>
+              <input value={emailData.subject} readOnly style={{width:"100%",background:"#12141a",border:"1px solid #1e2028",borderRadius:6,padding:"8px 10px",color:"#ccc",fontSize:12,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}} onClick={e=>e.target.select()} />
+            </div>
+            <div>
+              <label style={{fontSize:10,fontWeight:600,color:"#666",textTransform:"uppercase",display:"block",marginBottom:3}}>Body</label>
+              <textarea value={emailData.body} readOnly rows={10} style={{width:"100%",background:"#12141a",border:"1px solid #1e2028",borderRadius:6,padding:"8px 10px",color:"#ccc",fontSize:11,fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.5,boxSizing:"border-box"}} onClick={e=>e.target.select()} />
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={() => {
+              navigator.clipboard.writeText(`To: ${emailData.emails.join("; ")}\nSubject: ${emailData.subject}\n\n${emailData.body}`);
+            }} style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:6,color:"#ccc",fontSize:12,fontWeight:600,padding:"8px 16px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+              <I.Copy/> Copy All
+            </button>
+            <a href={`mailto:${emailData.emails.join(",")}?subject=${encodeURIComponent(emailData.subject)}&body=${encodeURIComponent(emailData.body)}`}
+              style={{background:"#E8C94A",borderRadius:6,color:"#111",fontSize:12,fontWeight:700,padding:"8px 20px",cursor:"pointer",fontFamily:"inherit",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>
+              <I.Send/> Open in Email App
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>}
   </div>;
 };
 
