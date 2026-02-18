@@ -11,8 +11,10 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   const [driverTpl,setDriverTpl]=useState(()=>{try{const s=localStorage.getItem("pk_tpl_driver");if(s)return s;}catch(e){}return"Route: {routeLabel}\nDepart: {departTime}\n{stopsList}\n> {callTime} ARRIVE {destination}\n\nMaps: {mapsUrl}";});
   const saveTpl=()=>{try{localStorage.setItem("pk_tpl_traveller",travellerTpl);localStorage.setItem("pk_tpl_driver",driverTpl);}catch(e){}setEditTpl(false);};
   const day=days.find(d=>d.id===selDay);const dayR=routes.filter(r=>r.dayId===selDay);
-  const allP=[...cast.map(c=>({id:c.id,type:"cast",name:c.name,role:c.roleName||"",address:c.hotel||c.address})),...crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver").map(c=>({id:c.id,type:"crew",name:c.name,role:`${c.dept} — ${c.role}`,address:c.address}))];
-  const gPN=s=>s.personType==="cast"?cast.find(c=>String(c.id)===String(s.personId))?.name||"—":crew.find(c=>c.id===s.personId)?.name||"—";
+  const allP=[...cast.map(c=>({id:c.id,type:"cast",name:c.name,role:c.roleName||"",roleNum:c.roleNum||"",address:c.hotel||c.address})),...crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver").map(c=>({id:c.id,type:"crew",name:c.name,role:`${c.dept} — ${c.role}`,roleNum:"",address:c.address}))];
+  const gPN=s=>{if(s.personType==="cast"){const c=cast.find(x=>String(x.id)===String(s.personId));return c?`#${c.roleNum} ${c.name}`:"—";}return crew.find(c=>c.id===s.personId)?.name||"—";};
+  const getCostumeTime=(personId,dayId)=>{const d=days.find(x=>x.id===dayId);const cs=d?.callSheet?.cast?.[String(personId)];return cs?.costume||"";};
+
   const drivers=crew.filter(c=>c.dept==="Driver"&&c.status==="confirmed");
 
   const calcRoute = async (route) => {
@@ -106,7 +108,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             {pk.map((s,i)=>{const sameAddr=pk.filter(x=>x.address&&s.address&&x.address.trim().toLowerCase()===s.address.trim().toLowerCase());const isFirst=sameAddr[0]===s;const groupNames=sameAddr.length>1&&isFirst?sameAddr.map(x=>gPN(x)).join(", "):null;
             return<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#12141a",borderRadius:6,border:"1px solid #1e2028"}}>
               <span style={{width:22,height:22,borderRadius:"50%",background:"#E8C94A18",color:"#E8C94A",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
-              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}<span style={{fontSize:10,color:"#666",marginLeft:6}}>{s.personType}</span>{groupNames&&<span style={{fontSize:10,color:"#E8C94A",marginLeft:6}}>+{sameAddr.length-1} same location</span>}</div><div style={{fontSize:11,color:"#888"}}>{s.address}</div></div>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}<span style={{fontSize:10,color:"#666",marginLeft:6}}>{s.personType}</span>{s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}{groupNames&&<span style={{fontSize:10,color:"#E8C94A",marginLeft:6}}>+{sameAddr.length-1} same location</span>}</div><div style={{fontSize:11,color:"#888"}}>{s.address}</div></div>
               {s.pickupTime&&<span style={{fontSize:14,fontWeight:800,color:"#E8C94A",flexShrink:0}}>{fmtTime(s.pickupTime)}</span>}
               {s.distance&&<span style={{fontSize:10,color:"#666"}}>{toKm(s.distance)} km</span>}
               <TrafficBadge note={s.trafficNote}/>
@@ -167,7 +169,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       <div style={{marginBottom:12}}><label style={LS}>Stops</label>
         {rf.stops?.map((s,i)=>s.type==="pickup"?<div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
           <select value={s.personType} onChange={e=>upSt(i,"personType",e.target.value)} style={{...IS,width:80}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
-          <select value={s.personId} onChange={e=>upSt(i,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.name} ({p.role})</option>)}</select>
+          <select value={s.personId} onChange={e=>upSt(i,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}</select>
           <AddressInput value={s.address} onChange={v=>upSt(i,"address",v)} placeholder="Address" style={{flex:1}}/>
           <button onClick={()=>setRf({...rf,stops:rf.stops.filter((_,j)=>j!==i)})} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
         </div>:
