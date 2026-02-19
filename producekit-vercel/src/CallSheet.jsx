@@ -143,30 +143,57 @@ const CallSheetModule = ({ project, setProject }) => {
   };
 
   /* ── REFRESH ALL ───────────────────────────────────────── */
+  /* ── REFRESH ALL (smart — keeps manual edits, recalculates after) ── */
   const refreshAll = () => {
     if (!day || dayStrips.length === 0) return;
     const ordered = day.strips;
     const breakMap = {};
     csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
 
-    let cursor = firstTake;
     const updatedStrips = strips.map(s => ({...s}));
     const updatedBreaks = csBreaks.map(b => ({...b}));
+
+    // Find the last scene that has a manually set endTime different from computed
+    // We recalculate from that scene's endTime forward
+    let cursor = firstTake;
+    let manualCursor = null;
 
     for (let idx = 0; idx < ordered.length; idx++) {
       const sid = ordered[idx];
       const si = updatedStrips.findIndex(s => s.id === sid);
       if (si < 0) continue;
-      const dur = Math.round((updatedStrips[si].pages || 1) * 60);
-      updatedStrips[si].startTime = cursor;
-      updatedStrips[si].endTime = addMin(cursor, dur);
-      cursor = updatedStrips[si].endTime;
+      const strip = updatedStrips[si];
+      const dur = strip.estMinutes || Math.round((strip.pages || 1) * 60);
+
+      // Check if this scene has manually edited end time
+      const computedEnd = addMin(cursor, dur);
+      const hasManualEnd = strip.endTime && strip.endTime !== computedEnd;
+      const hasManualStart = strip.startTime && strip.startTime !== cursor;
+
+      if (hasManualEnd || hasManualStart) {
+        // Keep this scene's times as-is, use its endTime as cursor
+        manualCursor = strip.endTime || computedEnd;
+      } else if (manualCursor) {
+        // After a manual scene — recalculate from manual cursor
+        updatedStrips[si].startTime = manualCursor;
+        updatedStrips[si].endTime = addMin(manualCursor, dur);
+        manualCursor = updatedStrips[si].endTime;
+      } else {
+        // Before any manual edits — recalculate normally
+        updatedStrips[si].startTime = cursor;
+        updatedStrips[si].endTime = computedEnd;
+      }
+
+      const activeCursor = manualCursor || updatedStrips[si].endTime;
       const brk = breakMap[sid];
       if (brk) {
         const bDur = brk.duration || 60;
         const bi = updatedBreaks.findIndex(b => b.id === brk.id);
-        if (bi >= 0) { updatedBreaks[bi].startTime = cursor; updatedBreaks[bi].endTime = addMin(cursor, bDur); }
-        cursor = addMin(cursor, bDur);
+        if (bi >= 0) { updatedBreaks[bi].startTime = activeCursor; updatedBreaks[bi].endTime = addMin(activeCursor, bDur); }
+        if (manualCursor) manualCursor = addMin(activeCursor, bDur);
+        else cursor = addMin(activeCursor, bDur);
+      } else {
+        if (!manualCursor) cursor = updatedStrips[si].endTime;
       }
     }
 
@@ -307,9 +334,10 @@ const CallSheetModule = ({ project, setProject }) => {
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Call Sheet — ${project.name} — ${day.label}</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Roboto+Mono:wght@500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Google Sans Flex','Google Sans','Helvetica Neue',Arial,sans-serif;font-size:9px;color:#111;padding:16px 20px;max-width:210mm}
+body{font-family:'Manrope',system-ui,sans-serif;font-size:9px;color:#111;padding:16px 20px;max-width:210mm}
 @page{margin:6mm;size:A4 portrait}
 @media print{body{padding:0}}
 
@@ -342,7 +370,7 @@ table{width:100%;border-collapse:collapse}
 th{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#666;padding:2px 4px;border-bottom:1.5px solid #333;text-align:left}
 td{padding:2px 4px;font-size:8.5px;border-bottom:0.5px solid #e5e5e5;vertical-align:top}
 .sc{font-weight:800;width:28px}
-.mono{font-family:'Google Sans Mono','Roboto Mono','Courier New',monospace;font-size:8px;font-weight:600}
+.mono{font-family:'Roboto Mono',monospace;font-size:8px;font-weight:600}
 .b{font-weight:700}
 .r{text-align:right}
 .cast{color:#92400E;font-weight:600;font-size:8px}
@@ -601,12 +629,18 @@ Questions? Contact 1st AD.`;
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
             <thead><tr style={{borderBottom:"1px solid #333"}}>
-              {["Sc","From","To","Synopsis","Cast","Type","Pgs","Location"].map(hd=><th key={hd} style={thS}>{hd}</th>)}
+              {["Sc","From","To","Synopsis","Cast","Type","Est","Location"].map(hd=><th key={hd} style={thS}>{hd}</th>)}
             </tr></thead>
             <tbody>
               {sceneOrder.map(item => {
                 if (item.type === "scene") {
                   const s = item.data; const loc = gLoc(s.locationId);
+                  const defaultDur = Math.round((s.pages || 1) * 60);
+                  const customDur = s.estMinutes || 0;
+                  const setDur = (mins) => {
+                    const end = s.startTime ? addMin(s.startTime, mins) : "";
+                    setProject(p => ({...p, strips: p.strips.map(x => x.id === s.id ? {...x, estMinutes: mins, endTime: end} : x)}));
+                  };
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
                     <td style={{...tdS,width:68}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
@@ -614,7 +648,14 @@ Questions? Contact 1st AD.`;
                     <td style={{...tdS,color:"#aaa",maxWidth:200}}>{s.synopsis}</td>
                     <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>{(s.cast||[]).map(id=>{const c=cast.find(x=>x.id===id);return c?.roleNum||id;}).join(", ")}</td>
                     <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
-                    <td style={{...tdS,color:"#888",width:36}}>{s.pages}</td>
+                    <td style={{...tdS,width:62}}>
+                      <div style={{display:"flex",alignItems:"center",gap:2}}>
+                        <input type="number" min="1" value={customDur || defaultDur}
+                          onChange={e => setDur(Number(e.target.value))}
+                          style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:customDur?"#3b82f6":"#666",fontSize:10,fontWeight:customDur?700:500,padding:"2px 3px",width:32,fontFamily:"inherit",outline:"none",textAlign:"center"}} />
+                        <span style={{fontSize:8,color:"#555"}}>m</span>
+                      </div>
+                    </td>
                     <td style={{...tdS,color:"#888",fontSize:10}}>{loc?.name||"—"}</td>
                   </tr>;
                 }
