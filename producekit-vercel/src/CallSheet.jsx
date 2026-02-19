@@ -5,8 +5,8 @@ import { STRIP_COLORS, VEHICLE_TYPES, KEY_ROLES, DEPARTMENTS, fmtTime, fmtDate, 
 const TI = ({ value, onChange, color, bold }) => (
   <input type="time" value={value || ""} onChange={e => onChange(e.target.value)}
     style={{ background:"#12141a", border:"1px solid #2a2d35", borderRadius:4,
-      color: color || "#ccc", fontSize:12, fontWeight: bold ? 800 : 600, padding:"4px 8px",
-      width: 88, fontFamily:"inherit", outline:"none", letterSpacing:"0.02em" }}
+      color: color || "#ccc", fontSize:11, fontWeight: bold ? 800 : 600, padding:"3px 6px",
+      width: 80, fontFamily:"inherit", outline:"none", letterSpacing:"0.01em" }}
     onClick={e => e.stopPropagation()} />
 );
 
@@ -309,7 +309,7 @@ const CallSheetModule = ({ project, setProject }) => {
 <title>Call Sheet — ${project.name} — ${day.label}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:9px;color:#111;padding:16px 20px;max-width:210mm}
+body{font-family:'Google Sans Flex','Google Sans','Helvetica Neue',Arial,sans-serif;font-size:9px;color:#111;padding:16px 20px;max-width:210mm}
 @page{margin:6mm;size:A4 portrait}
 @media print{body{padding:0}}
 
@@ -342,7 +342,7 @@ table{width:100%;border-collapse:collapse}
 th{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#666;padding:2px 4px;border-bottom:1.5px solid #333;text-align:left}
 td{padding:2px 4px;font-size:8.5px;border-bottom:0.5px solid #e5e5e5;vertical-align:top}
 .sc{font-weight:800;width:28px}
-.mono{font-family:'Courier New',monospace;font-size:8px;font-weight:600}
+.mono{font-family:'Google Sans Mono','Roboto Mono','Courier New',monospace;font-size:8px;font-weight:600}
 .b{font-weight:700}
 .r{text-align:right}
 .cast{color:#92400E;font-weight:600;font-size:8px}
@@ -609,8 +609,8 @@ Questions? Contact 1st AD.`;
                   const s = item.data; const loc = gLoc(s.locationId);
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
-                    <td style={{...tdS,width:78}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
-                    <td style={{...tdS,width:78}}><TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/></td>
+                    <td style={{...tdS,width:68}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
+                    <td style={{...tdS,width:68}}><TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/></td>
                     <td style={{...tdS,color:"#aaa",maxWidth:200}}>{s.synopsis}</td>
                     <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>{(s.cast||[]).map(id=>{const c=cast.find(x=>x.id===id);return c?.roleNum||id;}).join(", ")}</td>
                     <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
@@ -621,8 +621,8 @@ Questions? Contact 1st AD.`;
                 const b = item.data; const bt = BREAK_TYPES.find(t=>t.id===b.type)||BREAK_TYPES[1];
                 return <tr key={b.id} style={{borderBottom:"1px solid #1e2028",background:bt.color+"08"}}>
                   <td style={{...tdS,color:bt.color,fontSize:9}}>⏸</td>
-                  <td style={{...tdS,width:78}}><TI value={b.startTime||""} onChange={v=>updateBreak(b.id,"startTime",v)} color={bt.color}/></td>
-                  <td style={{...tdS,width:78}}><TI value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
+                  <td style={{...tdS,width:68}}><TI value={b.startTime||""} onChange={v=>updateBreak(b.id,"startTime",v)} color={bt.color}/></td>
+                  <td style={{...tdS,width:68}}><TI value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
                   <td style={tdS} colSpan={3}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <input value={b.label||""} onChange={e=>updateBreak(b.id,"label",e.target.value)}
@@ -656,11 +656,11 @@ Questions? Contact 1st AD.`;
                   <td style={{...tdS,color:"#aaa",fontWeight:600,fontSize:10}}>{c.roleName}</td>
                   <td style={{...tdS,color:"#f0f0f0",fontWeight:600}}>{c.name}</td>
                   <td style={{...tdS,color:"#888",fontSize:10,maxWidth:100}}>{scenes.map(s=>s.scene).join(", ")}</td>
-                  <td style={{...tdS,width:90}}>{pickup?<span style={{fontSize:11,fontWeight:600,color:"#22c55e"}}>{fmtTime(pickup)}</span>:<span style={{color:"#555",fontSize:10}}>—</span>}</td>
-                  <td style={{...tdS,width:88}}><TI value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
-                  <td style={{...tdS,width:88}}><TI value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
-                  <td style={{...tdS,width:88}}><TI value={d.onSet} onChange={v=>updateCastCS(c.id,"onSet",v)} color="#E8C94A"/></td>
-                  <td style={{...tdS,width:110}}><input value={d.notes||""} onChange={e=>updateCastCS(c.id,"notes",e.target.value)} placeholder="..." style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:10,padding:"2px 6px",width:"100%",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/></td>
+                  <td style={{...tdS,width:74}}>{pickup?<span style={{fontSize:11,fontWeight:600,color:"#22c55e"}}>{fmtTime(pickup)}</span>:<span style={{color:"#555",fontSize:10}}>—</span>}</td>
+                  <td style={{...tdS,width:74}}><TI value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
+                  <td style={{...tdS,width:74}}><TI value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
+                  <td style={{...tdS,width:74}}><TI value={d.onSet} onChange={v=>updateCastCS(c.id,"onSet",v)} color="#E8C94A"/></td>
+                  <td style={{...tdS}}><input value={d.notes||""} onChange={e=>updateCastCS(c.id,"notes",e.target.value)} placeholder="..." style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:10,padding:"2px 6px",width:"100%",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/></td>
                 </tr>;
               })}
               {dayCast.length===0&&<tr><td colSpan={9} style={{...tdS,textAlign:"center",color:"#555",padding:16}}>No cast</td></tr>}

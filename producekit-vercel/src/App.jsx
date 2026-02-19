@@ -46,8 +46,8 @@ export default function App() {
   return (
     <div style={{ display:"flex", height:"100vh", background:T.bg, color:T.text, fontFamily:T.fontBody, overflow:"hidden" }}>
       <style>{spinKF}</style>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-      <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;600;700&display=swap" rel="stylesheet"/>
 
       {/* SIDEBAR */}
       <div style={{ width:sidebarOpen?210:56, background:T.bgPanel, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", transition:"width 0.2s ease", overflow:"hidden", flexShrink:0 }}>

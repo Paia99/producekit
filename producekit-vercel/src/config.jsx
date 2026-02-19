@@ -8,8 +8,8 @@ export const T = {
   text:"#e2e4e9", textMuted:"#8b8f9a", textDim:"#5a5e6a", textHeading:"#f0f1f4",
   accent:"#d4a843", accentSoft:"#d4a84318", accentBorder:"#d4a84340",
   green:"#34d399", blue:"#60a5fa", red:"#f87171", orange:"#fbbf24", purple:"#a78bfa",
-  fontBody:"'Inter',system-ui,-apple-system,sans-serif",
-  fontMono:"'JetBrains Mono','SF Mono',monospace",
+  fontBody:"'Google Sans Flex','Google Sans','Product Sans',system-ui,-apple-system,sans-serif",
+  fontMono:"'Google Sans Mono','Roboto Mono',monospace",
   r4:4, r6:6, r8:8, r10:10, r12:12,
   shadow:"0 2px 8px rgba(0,0,0,0.3)", shadowLg:"0 12px 40px rgba(0,0,0,0.5)",
 };
