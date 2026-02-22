@@ -10,6 +10,19 @@ const TI = ({ value, onChange, color, bold }) => (
     onClick={e => e.stopPropagation()} />
 );
 
+/* Time input with ▲▼ nudge buttons (+/- 5 min) */
+const TIN = ({ value, onChange, color, bold, step }) => {
+  const inc = step || 5;
+  const nudge = (m) => { if (value) onChange(addMin(value, m)); };
+  return <div style={{display:"flex",alignItems:"center",gap:1}}>
+    <TI value={value} onChange={onChange} color={color} bold={bold} />
+    <div style={{display:"flex",flexDirection:"column"}}>
+      <button onClick={()=>nudge(inc)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:color||"#3b82f6",cursor:"pointer",padding:"0 3px",fontSize:7,lineHeight:"11px",fontFamily:"inherit"}}>▲</button>
+      <button onClick={()=>nudge(-inc)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:color||"#3b82f6",cursor:"pointer",padding:"0 3px",fontSize:7,lineHeight:"11px",fontFamily:"inherit"}}>▼</button>
+    </div>
+  </div>;
+};
+
 const HInput = ({ value, onChange, placeholder, w }) => (
   <input value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder || ""}
     style={{ background:"transparent", border:"1px solid #2a2d35", borderRadius:3,
@@ -590,7 +603,7 @@ Questions? Contact 1st AD.`;
               </div>
             </HR>
             <HR label="Call on set"><TI value={callOnSet} onChange={setCallOnSet} color="#E8C94A" bold /></HR>
-            <HR label="First take"><TI value={firstTake} onChange={setFirstTake} color="#22c55e" bold /></HR>
+            <HR label="First take"><TIN value={firstTake} onChange={setFirstTake} color="#22c55e" bold /></HR>
             <HR label="Est. wrap"><TI value={estWrap} onChange={setEstWrap} color="#ef4444" bold /></HR>
             <div style={{borderTop:"1px solid #2a2d35",marginTop:6,paddingTop:6}}>
               <HR label="Sunrise"><HInput value={h.sunrise||""} onChange={v=>setH({sunrise:v})} placeholder="5:48" w={80} /></HR>
@@ -673,20 +686,16 @@ Questions? Contact 1st AD.`;
                   const nudge = (min) => {
                     const cur = s.endTime || s.startTime || "08:00";
                     const newEnd = addMin(cur, min);
-                    // Cascade: update this scene's endTime, then recalc all scenes after it
                     setProject(p => {
                       const ordered = day.strips;
                       const fromIdx = ordered.indexOf(s.id);
                       const breakMap = {}; csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
                       const updated = p.strips.map(x => ({...x}));
-                      // Set this scene
                       const si = updated.findIndex(x => x.id === s.id);
                       if (si >= 0) updated[si].endTime = newEnd;
                       let cursor = newEnd;
-                      // Handle break after this scene
                       const brk0 = breakMap[s.id];
                       if (brk0) cursor = addMin(cursor, brk0.duration || 60);
-                      // Cascade subsequent scenes
                       for (let idx = fromIdx + 1; idx < ordered.length; idx++) {
                         const sid = ordered[idx];
                         const xi = updated.findIndex(x => x.id === sid);
@@ -704,12 +713,12 @@ Questions? Contact 1st AD.`;
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
                     <td style={{...tdS,width:68}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
-                    <td style={{...tdS,width:110}}>
-                      <div style={{display:"flex",alignItems:"center",gap:2}}>
+                    <td style={{...tdS,width:100}}>
+                      <div style={{display:"flex",alignItems:"center",gap:1}}>
                         <TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/>
-                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                          <button onClick={()=>nudge(5)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px",fontFamily:"inherit"}}>▲</button>
-                          <button onClick={()=>nudge(-5)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px",fontFamily:"inherit"}}>▼</button>
+                        <div style={{display:"flex",flexDirection:"column"}}>
+                          <button onClick={()=>nudge(5)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:"#3b82f6",cursor:"pointer",padding:"0 3px",fontSize:7,lineHeight:"11px",fontFamily:"inherit"}}>▲</button>
+                          <button onClick={()=>nudge(-5)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:"#3b82f6",cursor:"pointer",padding:"0 3px",fontSize:7,lineHeight:"11px",fontFamily:"inherit"}}>▼</button>
                         </div>
                       </div>
                     </td>
@@ -724,7 +733,7 @@ Questions? Contact 1st AD.`;
                 return <tr key={b.id} style={{borderBottom:"1px solid #1e2028",background:bt.color+"08"}}>
                   <td style={{...tdS,color:bt.color,fontSize:9}}>⏸</td>
                   <td style={{...tdS,width:68}}><TI value={b.startTime||""} onChange={v=>updateBreak(b.id,"startTime",v)} color={bt.color}/></td>
-                  <td style={{...tdS,width:68}}><TI value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
+                  <td style={{...tdS,width:100}}><TIN value={b.endTime||""} onChange={v=>updateBreak(b.id,"endTime",v)} color={bt.color}/></td>
                   <td style={tdS} colSpan={3}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <input value={b.label||""} onChange={e=>updateBreak(b.id,"label",e.target.value)}
@@ -759,8 +768,8 @@ Questions? Contact 1st AD.`;
                   <td style={{...tdS,color:"#f0f0f0",fontWeight:600}}>{c.name}</td>
                   <td style={{...tdS,color:"#888",fontSize:10,maxWidth:100}}>{scenes.map(s=>s.scene).join(", ")}</td>
                   <td style={{...tdS,width:74}}>{pickup?<span style={{fontSize:11,fontWeight:600,color:"#22c55e"}}>{fmtTime(pickup)}</span>:<span style={{color:"#555",fontSize:10}}>—</span>}</td>
-                  <td style={{...tdS,width:74}}><TI value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
-                  <td style={{...tdS,width:74}}><TI value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
+                  <td style={{...tdS,width:90}}><TIN value={d.costume} onChange={v=>updateCastCS(c.id,"costume",v)}/></td>
+                  <td style={{...tdS,width:90}}><TIN value={d.makeup} onChange={v=>updateCastCS(c.id,"makeup",v)}/></td>
                   <td style={{...tdS,width:74}}><TI value={d.onSet} onChange={v=>updateCastCS(c.id,"onSet",v)} color="#E8C94A"/></td>
                   <td style={{...tdS}}><input value={d.notes||""} onChange={e=>updateCastCS(c.id,"notes",e.target.value)} placeholder="..." style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:"#888",fontSize:10,padding:"2px 6px",width:"100%",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/></td>
                 </tr>;
@@ -779,7 +788,7 @@ Questions? Contact 1st AD.`;
             return <div key={c.id} style={{display:"flex",alignItems:"center",gap:3,padding:"1px 0",fontSize:9,borderTop:div?"1px solid #2a2d35":"none"}}>
               <span style={{color:"#555",fontWeight:600,minWidth:48,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:9}}>{c.role}</span>
               <span style={{color:"#bbb",fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10}}>{c.name}</span>
-              <TI value={cc} onChange={v=>updateCrewCS(c.id,"call",v)} color={early?"#ef4444":"#888"}/>
+              <TIN value={cc} onChange={v=>updateCrewCS(c.id,"call",v)} color={early?"#ef4444":"#888"}/>
             </div>;
           })}
         </div>
