@@ -284,7 +284,51 @@ const CallSheetModule = ({ project, setProject }) => {
     const mid = dayStrips.length > 1 ? dayStrips[Math.floor(dayStrips.length/2)-1]?.id : dayStrips[0]?.id;
     persistCS({ breaks: [...csBreaks, { id:"brk"+Date.now(), type:bt.id, label:bt.label, duration:bt.defaultDur, afterScene:mid||"", startTime:"", endTime:"" }]});
   };
-  const updateBreak = (brkId, field, value) => persistCS({ breaks: csBreaks.map(b => b.id === brkId ? { ...b, [field]: value } : b) });
+  const updateBreak = (brkId, field, value) => {
+    if (field === "endTime" || field === "duration") {
+      // Cascade: update break, then recalculate scenes after this break
+      const brk = csBreaks.find(b => b.id === brkId);
+      if (!brk) { persistCS({ breaks: csBreaks.map(b => b.id === brkId ? { ...b, [field]: value } : b) }); return; }
+      const updatedBreaks = csBreaks.map(b => b.id === brkId ? { ...b, [field]: value } : b);
+      const updatedBrk = updatedBreaks.find(b => b.id === brkId);
+      // Find which scene this break is after
+      const afterSceneId = brk.afterScene;
+      const ordered = day.strips;
+      const afterIdx = ordered.indexOf(afterSceneId);
+      if (afterIdx < 0) { persistCS({ breaks: updatedBreaks }); return; }
+      // Cursor = break end time
+      let cursor = field === "endTime" ? value : (brk.startTime ? addMin(brk.startTime, value) : "");
+      if (field === "endTime" && updatedBrk) updatedBrk.endTime = value;
+      if (field === "duration" && updatedBrk && brk.startTime) { updatedBrk.endTime = addMin(brk.startTime, value); cursor = updatedBrk.endTime; }
+      if (!cursor) { persistCS({ breaks: updatedBreaks }); return; }
+      // Build full break map for subsequent breaks
+      const breakMap = {}; updatedBreaks.forEach(b => { breakMap[b.afterScene] = b; });
+      const updatedStrips = strips.map(s => ({...s}));
+      for (let idx = afterIdx + 1; idx < ordered.length; idx++) {
+        const sid = ordered[idx];
+        const si = updatedStrips.findIndex(s => s.id === sid);
+        if (si < 0) continue;
+        const dur = Math.round((updatedStrips[si].pages || 1) * PPM);
+        updatedStrips[si].startTime = cursor;
+        updatedStrips[si].endTime = addMin(cursor, dur);
+        cursor = updatedStrips[si].endTime;
+        const nextBrk = breakMap[sid];
+        if (nextBrk) {
+          const bDur = nextBrk.duration || 60;
+          const bi = updatedBreaks.findIndex(b => b.id === nextBrk.id);
+          if (bi >= 0) { updatedBreaks[bi].startTime = cursor; updatedBreaks[bi].endTime = addMin(cursor, bDur); }
+          cursor = addMin(cursor, bDur);
+        }
+      }
+      // Single atomic update
+      setProject(prev => {
+        const newCS = { ...cs, breaks: updatedBreaks };
+        return { ...prev, strips: updatedStrips, days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d) };
+      });
+    } else {
+      persistCS({ breaks: csBreaks.map(b => b.id === brkId ? { ...b, [field]: value } : b) });
+    }
+  };
   const removeBreak = (brkId) => persistCS({ breaks: csBreaks.filter(b => b.id !== brkId) });
 
   const buildSceneOrder = () => {

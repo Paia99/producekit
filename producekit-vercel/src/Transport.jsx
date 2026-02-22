@@ -1,35 +1,109 @@
-import { useState, useReducer } from "react";
+import { useState, useRef, useEffect } from "react";
 import { VEHICLE_TYPES, fmtTime, fmtDate, toKm, addMin, I, StatusBadge, TrafficBadge, Modal, IS, LS, BP, BS, BD, callRouteOptimize, AddressInput } from "./config.jsx";
 
-/* Route form reducer — guaranteed no stale state */
-const rfReducer = (state, action) => {
-  switch (action.type) {
-    case "SET": return action.payload;
-    case "FIELD": return { ...state, [action.field]: action.value };
-    case "ADD_STOP": {
-      const s = [...(state.stops || [])];
-      const di = s.findIndex(x => x.type === "destination");
-      const ns = { _id: "s" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), type: "pickup", personType: "cast", personId: "", address: "", pickupTime: "", estDrive: 15, distance: "", trafficNote: "" };
-      if (di >= 0) s.splice(di, 0, ns); else s.push(ns);
-      return { ...state, stops: s };
-    }
-    case "UPDATE_STOP": {
-      const s = (state.stops || []).map(x => x._id === action.id ? { ...x, [action.field]: action.value } : x);
-      return { ...state, stops: s };
-    }
-    case "UPDATE_STOP_MULTI": {
-      const s = (state.stops || []).map(x => x._id === action.id ? { ...x, ...action.patch } : x);
-      return { ...state, stops: s };
-    }
-    case "REMOVE_STOP": return { ...state, stops: (state.stops || []).filter(x => x._id !== action.id) };
-    default: return state;
-  }
+/* Isolated route form — completely self-contained state */
+const RouteForm = ({ initial, vehicles, allP, locations, day, strips, cast, onSave, onDelete, onCancel, isNew }) => {
+  const [label, setLabel] = useState(initial.label || "");
+  const [vehicleId, setVehicleId] = useState(initial.vehicleId || "");
+  const [notes, setNotes] = useState(initial.notes || "");
+  const [stops, setStops] = useState(() => 
+    (initial.stops || []).map((s, i) => ({ ...s, _id: s._id || "init_" + i + "_" + Date.now() }))
+  );
+
+  const addStop = () => {
+    const newId = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+    setStops(prev => {
+      const di = prev.findIndex(x => x.type === "destination");
+      const ns = { _id: newId, type: "pickup", personType: "cast", personId: "", address: "", pickupTime: "", estDrive: 15, distance: "", trafficNote: "" };
+      const copy = [...prev];
+      if (di >= 0) copy.splice(di, 0, ns); else copy.push(ns);
+      return copy;
+    });
+  };
+
+  const updateStop = (id, field, value) => {
+    setStops(prev => {
+      const next = prev.map(s => s._id === id ? { ...s, [field]: value } : s);
+      if (field === "personId" && value) {
+        const stop = next.find(s => s._id === id);
+        if (stop) {
+          const p = allP.find(x => String(x.id) === String(value) && x.type === stop.personType);
+          if (p && p.address) stop.address = p.address;
+        }
+      }
+      return next;
+    });
+  };
+
+  const removeStop = (id) => setStops(prev => prev.filter(s => s._id !== id));
+
+  const handleSave = () => {
+    onSave({ ...initial, label, vehicleId, notes, stops, status: initial.status || "draft" });
+  };
+
+  return <>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      <div><label style={LS}>Label</label><input value={label} onChange={e=>setLabel(e.target.value)} style={IS}/></div>
+      <div><label style={LS}>Vehicle</label><select value={vehicleId} onChange={e=>setVehicleId(e.target.value)} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
+    </div>
+    <div style={{marginBottom:12}}>
+      <label style={LS}>Stops ({stops.length})</label>
+      {stops.map(s => s.type === "pickup" ? (
+        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+          <select value={s.personType} onChange={e=>updateStop(s._id,"personType",e.target.value)} style={{...IS,width:80}}>
+            <option value="cast">Cast</option><option value="crew">Crew</option>
+          </select>
+          <select value={s.personId||""} onChange={e=>updateStop(s._id,"personId",e.target.value)} style={{...IS,flex:1}}>
+            <option value="">— Select —</option>
+            {allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}
+          </select>
+          <AddressInput value={s.address} onChange={v=>updateStop(s._id,"address",v)} placeholder="Address" style={{flex:1}}/>
+          <button onClick={()=>removeStop(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
+        </div>
+      ) : (
+        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
+          <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:60,flexShrink:0}}>DEST</span>
+          <button onClick={()=>updateStop(s._id,"manualAddr",!s.manualAddr)} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
+          {!s.manualAddr ? (
+            <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
+              <option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          ) : (
+            <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
+          )}
+          <input type="time" value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
+        </div>
+      ))}
+      <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
+    </div>
+    {/* Cast call times reference */}
+    {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,marginBottom:12,overflow:"hidden"}}>
+      <div style={{padding:"6px 10px",borderBottom:"1px solid #1a1d23",fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase"}}>Cast — {day.label} · earliest arrival needed</div>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>{["#","Name","Costume","Makeup","On Set"].map(h=><th key={h} style={{padding:"3px 8px",fontSize:8,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left"}}>{h}</th>)}</tr></thead>
+        <tbody>
+          {cl.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<tr key={c.id}>
+            <td style={{padding:"3px 8px",fontSize:10,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
+            <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#ccc"}}>{c.name}</td>
+            <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#f59e0b",fontFamily:"monospace"}}>{d?.costume||"—"}</td>
+            <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#a855f7",fontFamily:"monospace"}}>{d?.makeup||"—"}</td>
+            <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#22c55e",fontFamily:"monospace"}}>{d?.onSet||"—"}</td>
+          </tr>;})}
+        </tbody>
+      </table>
+    </div>;})()}
+    <div><label style={LS}>Notes</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} style={{...IS,resize:"vertical"}}/></div>
+    <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}>
+      <div>{!isNew&&<button onClick={onDelete} style={BD}>Delete</button>}</div>
+      <div style={{display:"flex",gap:8}}><button onClick={onCancel} style={BS}>Cancel</button><button onClick={handleSave} style={BP}>Save</button></div>
+    </div>
+  </>;
 };
 
 const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strips, crew, cast, locations }) => {
   const [selDay,setSelDay]=useState(days[0]?.id||"");const [viewMode,setViewMode]=useState("routes");
-  const [editRoute,setEditRoute]=useState(null);const [editVeh,setEditVeh]=useState(null);
-  const [rf, rfD] = useReducer(rfReducer, {});
+  const [editRoute,setEditRoute]=useState(null); // null | "new" | route object
+  const [editVeh,setEditVeh]=useState(null);
   const [vf,setVf]=useState({});
   const [calc,setCalc]=useState(null);const [calcErr,setCalcErr]=useState("");const [dispPrev,setDispPrev]=useState(null);
   const [editTpl,setEditTpl]=useState(false);
@@ -92,17 +166,21 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
   const openNV=()=>{setVf({type:"van8",plate:"",label:"",driverId:null,color:"#3b82f6"});setEditVeh("new");};
   const saveV=()=>{if(editVeh==="new")setVehicles(p=>[...p,{...vf,id:"v"+Date.now()}]);else setVehicles(p=>p.map(v=>v.id===vf.id?vf:v));setEditVeh(null);};
-  const openNR=()=>{
-    rfD({type:"SET",payload:{vehicleId:vehicles[0]?.id||"",dayId:selDay,label:`Route — ${day?.label||""}`,stops:[{_id:"dest_"+Date.now(),type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0}],notes:"",status:"draft"}});
-    setEditRoute("new");
+  const openNR=()=>setEditRoute("new");
+  const handleSaveRoute = (formData) => {
+    if (editRoute === "new") {
+      setRoutes(p => [...p, { ...formData, id: "r" + Date.now(), optimized: false, demo: false, gmapsUrl: "", totalDrive: null, totalDistance: null, trafficSummary: "" }]);
+    } else {
+      setRoutes(p => p.map(r => r.id === editRoute.id ? { ...formData, id: editRoute.id, optimized: editRoute.optimized, demo: editRoute.demo, gmapsUrl: editRoute.gmapsUrl, totalDrive: editRoute.totalDrive, totalDistance: editRoute.totalDistance, trafficSummary: editRoute.trafficSummary } : r));
+    }
+    setEditRoute(null);
   };
-  const saveR=()=>{if(editRoute==="new")setRoutes(p=>[...p,{...rf,id:"r"+Date.now(),optimized:false,demo:false,gmapsUrl:"",totalDrive:null,totalDistance:null,trafficSummary:""}]);else setRoutes(p=>p.map(r=>r.id===rf.id?rf:r));setEditRoute(null);};
-  const addSt=()=>{console.log("ADD_STOP dispatched, current stops:", rf.stops?.length); rfD({type:"ADD_STOP"});};
-  const upSt=(id,f,v)=>{
-    rfD({type:"UPDATE_STOP",id,field:f,value:v});
-    if(f==="personId"&&v){const p=allP.find(x=>String(x.id)===String(v));if(p)rfD({type:"UPDATE_STOP",id,field:"address",value:p.address||""});}
+  const handleDeleteRoute = () => {
+    if (editRoute && editRoute !== "new") {
+      setRoutes(p => p.filter(r => r.id !== editRoute.id));
+    }
+    setEditRoute(null);
   };
-  const rmSt=(id)=>rfD({type:"REMOVE_STOP",id});
 
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -143,7 +221,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             <button onClick={()=>calcRoute(route)} disabled={calc===route.id} style={{...BS,padding:"6px 12px",fontSize:11}}>{calc===route.id?<><I.Loader/> Calculating...</>:<><I.Route/> Calculate Route</>}</button>
             {route.optimized&&<button onClick={()=>showDispatch(route)} style={{...BS,padding:"6px 12px",fontSize:11,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/> Dispatch</button>}
             <button onClick={()=>{const dest=route.stops.find(s=>s.type==="destination");const arrT=dest?.arrivalTime||day?.callTime||"06:00";const turnaround=route.totalDrive?route.totalDrive+15:45;const newRun={runLabel:`Trip ${(route.runs||[]).length+2}`,stops:[{type:"destination",locationId:dest?.locationId||"",address:dest?.address||"",arrivalTime:addMin(arrT,turnaround),estDrive:0}],optimized:false,totalDrive:null,totalDistance:null};setRoutes(p=>p.map(r=>r.id===route.id?{...r,runs:[...(r.runs||[]),newRun]}:r));}} style={{...BS,padding:"6px 12px",fontSize:11}} title="Add another trip with this vehicle"><I.Plus/> Run</button>
-            <button onClick={()=>{rfD({type:"SET",payload:{...route,stops:route.stops.map((s,idx)=>({...s,_id:s._id||"s"+Date.now()+"_"+idx}))}});setEditRoute(route);}} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
+            <button onClick={()=>setEditRoute(route)} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
             <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==route.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:4}}><I.Trash/></button>
           </div>
         </div>
@@ -213,46 +291,16 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       </div>;})}
     </div>}
     {/* Edit Route Modal */}
-    {editRoute&&<Modal key={editRoute==="new"?"new_route":rf.id||"edit_route"} title={editRoute==="new"?"Create Route":"Edit Route"} onClose={()=>setEditRoute(null)} width={640}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-        <div><label style={LS}>Label</label><input value={rf.label||""} onChange={e=>rfD({type:"FIELD",field:"label",value:e.target.value})} style={IS}/></div>
-        <div><label style={LS}>Vehicle</label><select value={rf.vehicleId} onChange={e=>rfD({type:"FIELD",field:"vehicleId",value:e.target.value})} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
-      </div>
-      <div style={{marginBottom:12}}><label style={LS}>Stops ({(rf.stops||[]).length})</label>
-        {console.log("Rendering stops:", (rf.stops||[]).map(s=>({_id:s._id,type:s.type})))}
-        {(rf.stops||[]).map(s=>s.type==="pickup"?<div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-          <select value={s.personType} onChange={e=>upSt(s._id,"personType",e.target.value)} style={{...IS,width:80}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
-          <select value={s.personId||""} onChange={e=>upSt(s._id,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}</select>
-          <AddressInput value={s.address} onChange={v=>upSt(s._id,"address",v)} placeholder="Address" style={{flex:1}}/>
-          <button onClick={()=>rmSt(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
-        </div>:
-        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
-          <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:60,flexShrink:0}}>DEST</span>
-          <button onClick={()=>rfD({type:"UPDATE_STOP",id:s._id,field:"manualAddr",value:!s.manualAddr})} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
-          {!s.manualAddr?<select value={s.locationId||""} onChange={e=>{const locId=e.target.value;const loc=locations.find(l=>l.id===locId);rfD({type:"UPDATE_STOP_MULTI",id:s._id,patch:{locationId:locId,address:loc?.address||""}});}} style={{...IS,flex:1}}><option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select>
-          :<AddressInput value={s.address} onChange={v=>rfD({type:"UPDATE_STOP_MULTI",id:s._id,patch:{address:v,locationId:""}})} placeholder="Type destination address..."/>}
-          <input type="time" value={s.arrivalTime||""} onChange={e=>upSt(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
-        </div>)}
-        <button onClick={addSt} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
-      </div>
-      {/* Cast call times reference */}
-      {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,marginBottom:12,overflow:"hidden"}}>
-        <div style={{padding:"6px 10px",borderBottom:"1px solid #1a1d23",fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase"}}>Cast — {day.label} · earliest arrival needed</div>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["#","Name","Costume","Makeup","On Set"].map(h=><th key={h} style={{padding:"3px 8px",fontSize:8,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left"}}>{h}</th>)}</tr></thead>
-          <tbody>
-            {cl.map(c=>{const d=day.callSheet?.cast?.[String(c.id)];return<tr key={c.id}>
-              <td style={{padding:"3px 8px",fontSize:10,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
-              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#ccc"}}>{c.name}</td>
-              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#f59e0b",fontFamily:"monospace"}}>{d?.costume||"—"}</td>
-              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#a855f7",fontFamily:"monospace"}}>{d?.makeup||"—"}</td>
-              <td style={{padding:"3px 8px",fontSize:10,fontWeight:600,color:"#22c55e",fontFamily:"monospace"}}>{d?.onSet||"—"}</td>
-            </tr>;})}
-          </tbody>
-        </table>
-      </div>;})()}
-      <div><label style={LS}>Notes</label><textarea value={rf.notes||""} onChange={e=>rfD({type:"FIELD",field:"notes",value:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editRoute!=="new"&&<button onClick={()=>{setRoutes(p=>p.filter(r=>r.id!==rf.id));setEditRoute(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditRoute(null)} style={BS}>Cancel</button><button onClick={saveR} style={BP}>Save</button></div></div>
+    {editRoute&&<Modal title={editRoute==="new"?"Create Route":"Edit Route"} onClose={()=>setEditRoute(null)} width={640}>
+      <RouteForm
+        key={editRoute==="new"?"new_"+Date.now():editRoute.id}
+        initial={editRoute==="new" ? {vehicleId:vehicles[0]?.id||"",dayId:selDay,label:`Route — ${day?.label||""}`,stops:[{type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0}],notes:"",status:"draft"} : editRoute}
+        vehicles={vehicles} allP={allP} locations={locations} day={day} strips={strips} cast={cast}
+        isNew={editRoute==="new"}
+        onSave={handleSaveRoute}
+        onDelete={handleDeleteRoute}
+        onCancel={()=>setEditRoute(null)}
+      />
     </Modal>}
     {/* Vehicle Modal */}
     {editVeh&&<Modal title={editVeh==="new"?"Add Vehicle":"Edit Vehicle"} onClose={()=>setEditVeh(null)}>
