@@ -48,6 +48,7 @@ const BREAK_TYPES = [
 
 const CallSheetModule = ({ project, setProject }) => {
   const { days, strips, crew, cast, vehicles, routes, locations } = project;
+  const PPM = project.pagesPerMinute || 60; // minutes per page
   const [selDayId, setSelDayId] = useState(days[0]?.id || "");
 
   const day = days.find(d => d.id === selDayId);
@@ -163,7 +164,7 @@ const CallSheetModule = ({ project, setProject }) => {
       const si = updatedStrips.findIndex(s => s.id === sid);
       if (si < 0) continue;
       const strip = updatedStrips[si];
-      const dur = strip.estMinutes || Math.round((strip.pages || 1) * 60);
+      const dur = Math.round((strip.pages || 1) * PPM);
 
       // Check if this scene has manually edited end time
       const computedEnd = addMin(cursor, dur);
@@ -629,33 +630,32 @@ Questions? Contact 1st AD.`;
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
             <thead><tr style={{borderBottom:"1px solid #333"}}>
-              {["Sc","From","To","Synopsis","Cast","Type","Est","Location"].map(hd=><th key={hd} style={thS}>{hd}</th>)}
+              {["Sc","From","To","Synopsis","Cast","Type","Pgs","Location"].map(hd=><th key={hd} style={thS}>{hd}</th>)}
             </tr></thead>
             <tbody>
               {sceneOrder.map(item => {
                 if (item.type === "scene") {
                   const s = item.data; const loc = gLoc(s.locationId);
-                  const defaultDur = Math.round((s.pages || 1) * 60);
-                  const customDur = s.estMinutes || 0;
-                  const setDur = (mins) => {
-                    const end = s.startTime ? addMin(s.startTime, mins) : "";
-                    setProject(p => ({...p, strips: p.strips.map(x => x.id === s.id ? {...x, estMinutes: mins, endTime: end} : x)}));
+                  const nudge = (min) => {
+                    const cur = s.endTime || s.startTime || "08:00";
+                    setProject(p => ({...p, strips: p.strips.map(x => x.id === s.id ? {...x, endTime: addMin(cur, min)} : x)}));
                   };
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
                     <td style={{...tdS,width:68}}><TI value={s.startTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,startTime:v}:x)}))} color="#3b82f6"/></td>
-                    <td style={{...tdS,width:68}}><TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/></td>
+                    <td style={{...tdS,width:110}}>
+                      <div style={{display:"flex",alignItems:"center",gap:2}}>
+                        <TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/>
+                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                          <button onClick={()=>nudge(5)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px"}}>▲</button>
+                          <button onClick={()=>nudge(-5)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px"}}>▼</button>
+                        </div>
+                      </div>
+                    </td>
                     <td style={{...tdS,color:"#aaa",maxWidth:200}}>{s.synopsis}</td>
                     <td style={{...tdS,color:"#E8C94A",fontWeight:600,fontSize:10}}>{(s.cast||[]).map(id=>{const c=cast.find(x=>x.id===id);return c?.roleNum||id;}).join(", ")}</td>
                     <td style={tdS}><span style={{color:STRIP_COLORS[s.type],fontWeight:700,fontSize:9,background:STRIP_COLORS[s.type]+"18",padding:"1px 5px",borderRadius:3}}>{s.type}</span></td>
-                    <td style={{...tdS,width:62}}>
-                      <div style={{display:"flex",alignItems:"center",gap:2}}>
-                        <input type="number" min="1" value={customDur || defaultDur}
-                          onChange={e => setDur(Number(e.target.value))}
-                          style={{background:"transparent",border:"1px solid #2a2d35",borderRadius:3,color:customDur?"#3b82f6":"#666",fontSize:10,fontWeight:customDur?700:500,padding:"2px 3px",width:32,fontFamily:"inherit",outline:"none",textAlign:"center"}} />
-                        <span style={{fontSize:8,color:"#555"}}>m</span>
-                      </div>
-                    </td>
+                    <td style={{...tdS,color:"#888",width:36}}>{s.pages}</td>
                     <td style={{...tdS,color:"#888",fontSize:10}}>{loc?.name||"—"}</td>
                   </tr>;
                 }

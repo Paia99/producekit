@@ -67,7 +67,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   const openNV=()=>{setVf({type:"van8",plate:"",label:"",driverId:null,color:"#3b82f6"});setEditVeh("new");};
   const saveV=()=>{if(editVeh==="new")setVehicles(p=>[...p,{...vf,id:"v"+Date.now()}]);else setVehicles(p=>p.map(v=>v.id===vf.id?vf:v));setEditVeh(null);};
   const openNR=()=>{
-    const newRf = {vehicleId:vehicles[0]?.id||"",dayId:selDay,label:`Route — ${day?.label||""}`,stops:[{type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0}],notes:"",status:"draft"};
+    const newRf = {vehicleId:vehicles[0]?.id||"",dayId:selDay,label:`Route — ${day?.label||""}`,stops:[{_id:"dest_"+Date.now(),type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0}],notes:"",status:"draft"};
     setRf(newRf);
     setEditRoute("new");
   };
@@ -76,18 +76,19 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     setRf(prev => {
       const s = [...(prev.stops||[])];
       const di = s.findIndex(x => x.type === "destination");
-      const newStop = {type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15,distance:"",trafficNote:""};
+      const newStop = {_id:"s"+Date.now()+"_"+Math.random().toString(36).slice(2,6),type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15,distance:"",trafficNote:""};
       if (di >= 0) s.splice(di, 0, newStop); else s.push(newStop);
       return {...prev, stops: s};
     });
   };
-  const upSt=(i,f,v)=>{
+  const upSt=(id,f,v)=>{
     setRf(prev => {
-      const s = (prev.stops||[]).map((x,j)=>j===i?{...x,[f]:v}:x);
-      if(f==="personId"&&v){const st=s[i];const p=allP.find(x=>String(x.id)===String(v)&&x.type===st.personType);if(p)s[i].address=p.address||"";}
+      const s = (prev.stops||[]).map(x=>x._id===id?{...x,[f]:v}:x);
+      if(f==="personId"&&v){const st=s.find(x=>x._id===id);if(st){const p=allP.find(x=>String(x.id)===String(v)&&x.type===st.personType);if(p)st.address=p.address||"";}}
       return {...prev, stops: s};
     });
   };
+  const rmSt=(id)=>setRf(prev=>({...prev,stops:prev.stops.filter(x=>x._id!==id)}));
 
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -128,7 +129,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             <button onClick={()=>calcRoute(route)} disabled={calc===route.id} style={{...BS,padding:"6px 12px",fontSize:11}}>{calc===route.id?<><I.Loader/> Calculating...</>:<><I.Route/> Calculate Route</>}</button>
             {route.optimized&&<button onClick={()=>showDispatch(route)} style={{...BS,padding:"6px 12px",fontSize:11,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/> Dispatch</button>}
             <button onClick={()=>{const dest=route.stops.find(s=>s.type==="destination");const arrT=dest?.arrivalTime||day?.callTime||"06:00";const turnaround=route.totalDrive?route.totalDrive+15:45;const newRun={runLabel:`Trip ${(route.runs||[]).length+2}`,stops:[{type:"destination",locationId:dest?.locationId||"",address:dest?.address||"",arrivalTime:addMin(arrT,turnaround),estDrive:0}],optimized:false,totalDrive:null,totalDistance:null};setRoutes(p=>p.map(r=>r.id===route.id?{...r,runs:[...(r.runs||[]),newRun]}:r));}} style={{...BS,padding:"6px 12px",fontSize:11}} title="Add another trip with this vehicle"><I.Plus/> Run</button>
-            <button onClick={()=>{setRf({...route,stops:route.stops.map(s=>({...s}))});setEditRoute(route);}} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
+            <button onClick={()=>{setRf({...route,stops:route.stops.map((s,idx)=>({...s,_id:s._id||"s"+Date.now()+"_"+idx}))});setEditRoute(route);}} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
             <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==route.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:4}}><I.Trash/></button>
           </div>
         </div>
@@ -204,18 +205,18 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         <div><label style={LS}>Vehicle</label><select value={rf.vehicleId} onChange={e=>setRf({...rf,vehicleId:e.target.value})} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
       </div>
       <div style={{marginBottom:12}}><label style={LS}>Stops</label>
-        {rf.stops?.map((s,i)=>s.type==="pickup"?<div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-          <select value={s.personType} onChange={e=>upSt(i,"personType",e.target.value)} style={{...IS,width:80}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
-          <select value={s.personId} onChange={e=>upSt(i,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}</select>
-          <AddressInput value={s.address} onChange={v=>upSt(i,"address",v)} placeholder="Address" style={{flex:1}}/>
-          <button onClick={()=>setRf(prev=>({...prev,stops:prev.stops.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
+        {(rf.stops||[]).map(s=>s.type==="pickup"?<div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+          <select value={s.personType} onChange={e=>upSt(s._id,"personType",e.target.value)} style={{...IS,width:80}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
+          <select value={s.personId||""} onChange={e=>upSt(s._id,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}</select>
+          <AddressInput value={s.address} onChange={v=>upSt(s._id,"address",v)} placeholder="Address" style={{flex:1}}/>
+          <button onClick={()=>rmSt(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
         </div>:
-        <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
+        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
           <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:60,flexShrink:0}}>DEST</span>
-          <button onClick={()=>setRf(prev=>{const newStops=prev.stops.map((x,j)=>j===i?{...x,manualAddr:!x.manualAddr}:x);return{...prev,stops:newStops};})} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
-          {!s.manualAddr?<select value={s.locationId||""} onChange={e=>{const locId=e.target.value;const loc=locations.find(l=>l.id===locId);setRf(prev=>({...prev,stops:prev.stops.map((x,j)=>j===i?{...x,locationId:locId,address:loc?.address||x.address}:x)}));}} style={{...IS,flex:1}}><option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select>
-          :<AddressInput value={s.address} onChange={v=>setRf(prev=>({...prev,stops:prev.stops.map((x,j)=>j===i?{...x,address:v,locationId:""}:x)}))} placeholder="Type destination address..."/>}
-          <input type="time" value={s.arrivalTime||""} onChange={e=>upSt(i,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
+          <button onClick={()=>setRf(prev=>{const newStops=prev.stops.map(x=>x._id===s._id?{...x,manualAddr:!x.manualAddr}:x);return{...prev,stops:newStops};})} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
+          {!s.manualAddr?<select value={s.locationId||""} onChange={e=>{const locId=e.target.value;const loc=locations.find(l=>l.id===locId);setRf(prev=>({...prev,stops:prev.stops.map(x=>x._id===s._id?{...x,locationId:locId,address:loc?.address||x.address}:x)}));}} style={{...IS,flex:1}}><option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select>
+          :<AddressInput value={s.address} onChange={v=>setRf(prev=>({...prev,stops:prev.stops.map(x=>x._id===s._id?{...x,address:v,locationId:""}:x)}))} placeholder="Type destination address..."/>}
+          <input type="time" value={s.arrivalTime||""} onChange={e=>upSt(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
         </div>)}
         <button onClick={addSt} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
       </div>
