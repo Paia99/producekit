@@ -97,7 +97,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     setEditRoute("new");
   };
   const saveR=()=>{if(editRoute==="new")setRoutes(p=>[...p,{...rf,id:"r"+Date.now(),optimized:false,demo:false,gmapsUrl:"",totalDrive:null,totalDistance:null,trafficSummary:""}]);else setRoutes(p=>p.map(r=>r.id===rf.id?rf:r));setEditRoute(null);};
-  const addSt=()=>rfD({type:"ADD_STOP"});
+  const addSt=()=>{console.log("ADD_STOP dispatched, current stops:", rf.stops?.length); rfD({type:"ADD_STOP"});};
   const upSt=(id,f,v)=>{
     rfD({type:"UPDATE_STOP",id,field:f,value:v});
     if(f==="personId"&&v){const p=allP.find(x=>String(x.id)===String(v));if(p)rfD({type:"UPDATE_STOP",id,field:"address",value:p.address||""});}
@@ -213,12 +213,13 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       </div>;})}
     </div>}
     {/* Edit Route Modal */}
-    {editRoute&&<Modal title={editRoute==="new"?"Create Route":"Edit Route"} onClose={()=>setEditRoute(null)} width={640}>
+    {editRoute&&<Modal key={editRoute==="new"?"new_route":rf.id||"edit_route"} title={editRoute==="new"?"Create Route":"Edit Route"} onClose={()=>setEditRoute(null)} width={640}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
         <div><label style={LS}>Label</label><input value={rf.label||""} onChange={e=>rfD({type:"FIELD",field:"label",value:e.target.value})} style={IS}/></div>
         <div><label style={LS}>Vehicle</label><select value={rf.vehicleId} onChange={e=>rfD({type:"FIELD",field:"vehicleId",value:e.target.value})} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
       </div>
-      <div style={{marginBottom:12}}><label style={LS}>Stops</label>
+      <div style={{marginBottom:12}}><label style={LS}>Stops ({(rf.stops||[]).length})</label>
+        {console.log("Rendering stops:", (rf.stops||[]).map(s=>({_id:s._id,type:s.type})))}
         {(rf.stops||[]).map(s=>s.type==="pickup"?<div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
           <select value={s.personType} onChange={e=>upSt(s._id,"personType",e.target.value)} style={{...IS,width:80}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
           <select value={s.personId||""} onChange={e=>upSt(s._id,"personId",e.target.value)} style={{...IS,flex:1}}><option value="">— Select —</option>{allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}</select>

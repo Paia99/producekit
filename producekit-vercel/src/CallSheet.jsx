@@ -199,8 +199,15 @@ const CallSheetModule = ({ project, setProject }) => {
       resetCast[String(c.id)] = { costume: subMin(onSet, COSTUME_OFFSET), makeup: subMin(onSet, MAKEUP_OFFSET), onSet, notes: csCast[String(c.id)]?.notes || "" };
     });
 
-    persistCS({ breaks: updatedBreaks, crew: resetCrew, cast: resetCast });
-    setProject(prev => ({ ...prev, strips: updatedStrips }));
+    // SINGLE setProject call — updates strips AND callSheet together to avoid race condition
+    setProject(prev => {
+      const newCS = { ...cs, breaks: updatedBreaks, crew: resetCrew, cast: resetCast };
+      return {
+        ...prev,
+        strips: updatedStrips,
+        days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d),
+      };
+    });
   };
 
   /* ── REFRESH FROM SCENE — keeps times up to changed scene, recalculates after ── */
@@ -260,8 +267,15 @@ const CallSheetModule = ({ project, setProject }) => {
       resetCast[String(c.id)] = { costume: subMin(onSet, COSTUME_OFFSET), makeup: subMin(onSet, MAKEUP_OFFSET), onSet, notes: prev.notes || "" };
     });
 
-    persistCS({ breaks: updatedBreaks, cast: resetCast });
-    setProject(prev => ({ ...prev, strips: updatedStrips }));
+    // SINGLE setProject call to avoid race condition
+    setProject(prev => {
+      const newCS = { ...cs, breaks: updatedBreaks, cast: resetCast };
+      return {
+        ...prev,
+        strips: updatedStrips,
+        days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d),
+      };
+    });
   };
 
   /* ── breaks ────────────────────────────────────────────── */
