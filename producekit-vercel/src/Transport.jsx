@@ -201,8 +201,8 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     {/* Edit Route Modal */}
     {editRoute&&<Modal title={editRoute==="new"?"Create Route":"Edit Route"} onClose={()=>setEditRoute(null)} width={640}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-        <div><label style={LS}>Label</label><input value={rf.label||""} onChange={e=>setRf({...rf,label:e.target.value})} style={IS}/></div>
-        <div><label style={LS}>Vehicle</label><select value={rf.vehicleId} onChange={e=>setRf({...rf,vehicleId:e.target.value})} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
+        <div><label style={LS}>Label</label><input value={rf.label||""} onChange={e=>{const v=e.target.value;setRf(prev=>({...prev,label:v}));}} style={IS}/></div>
+        <div><label style={LS}>Vehicle</label><select value={rf.vehicleId} onChange={e=>{const v=e.target.value;setRf(prev=>({...prev,vehicleId:v}));}} style={IS}>{vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);return<option key={v.id} value={v.id}>{v.label} ({vt?.capacity} seats)</option>;})}</select></div>
       </div>
       <div style={{marginBottom:12}}><label style={LS}>Stops</label>
         {(rf.stops||[]).map(s=>s.type==="pickup"?<div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
@@ -236,7 +236,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           </tbody>
         </table>
       </div>;})()}
-      <div><label style={LS}>Notes</label><textarea value={rf.notes||""} onChange={e=>setRf({...rf,notes:e.target.value})} rows={2} style={{...IS,resize:"vertical"}}/></div>
+      <div><label style={LS}>Notes</label><textarea value={rf.notes||""} onChange={e=>{const v=e.target.value;setRf(prev=>({...prev,notes:v}));}} rows={2} style={{...IS,resize:"vertical"}}/></div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><div>{editRoute!=="new"&&<button onClick={()=>{setRoutes(p=>p.filter(r=>r.id!==rf.id));setEditRoute(null);}} style={BD}>Delete</button>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>setEditRoute(null)} style={BS}>Cancel</button><button onClick={saveR} style={BP}>Save</button></div></div>
     </Modal>}
     {/* Vehicle Modal */}

@@ -143,58 +143,31 @@ const CallSheetModule = ({ project, setProject }) => {
     return "";
   };
 
-  /* ── REFRESH ALL ───────────────────────────────────────── */
-  /* ── REFRESH ALL (smart — keeps manual edits, recalculates after) ── */
+  /* ── REFRESH ALL — recalculates all scene times from firstTake ── */
   const refreshAll = () => {
     if (!day || dayStrips.length === 0) return;
     const ordered = day.strips;
     const breakMap = {};
     csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
 
+    let cursor = firstTake;
     const updatedStrips = strips.map(s => ({...s}));
     const updatedBreaks = csBreaks.map(b => ({...b}));
-
-    // Find the last scene that has a manually set endTime different from computed
-    // We recalculate from that scene's endTime forward
-    let cursor = firstTake;
-    let manualCursor = null;
 
     for (let idx = 0; idx < ordered.length; idx++) {
       const sid = ordered[idx];
       const si = updatedStrips.findIndex(s => s.id === sid);
       if (si < 0) continue;
-      const strip = updatedStrips[si];
-      const dur = Math.round((strip.pages || 1) * PPM);
-
-      // Check if this scene has manually edited end time
-      const computedEnd = addMin(cursor, dur);
-      const hasManualEnd = strip.endTime && strip.endTime !== computedEnd;
-      const hasManualStart = strip.startTime && strip.startTime !== cursor;
-
-      if (hasManualEnd || hasManualStart) {
-        // Keep this scene's times as-is, use its endTime as cursor
-        manualCursor = strip.endTime || computedEnd;
-      } else if (manualCursor) {
-        // After a manual scene — recalculate from manual cursor
-        updatedStrips[si].startTime = manualCursor;
-        updatedStrips[si].endTime = addMin(manualCursor, dur);
-        manualCursor = updatedStrips[si].endTime;
-      } else {
-        // Before any manual edits — recalculate normally
-        updatedStrips[si].startTime = cursor;
-        updatedStrips[si].endTime = computedEnd;
-      }
-
-      const activeCursor = manualCursor || updatedStrips[si].endTime;
+      const dur = Math.round((updatedStrips[si].pages || 1) * PPM);
+      updatedStrips[si].startTime = cursor;
+      updatedStrips[si].endTime = addMin(cursor, dur);
+      cursor = updatedStrips[si].endTime;
       const brk = breakMap[sid];
       if (brk) {
         const bDur = brk.duration || 60;
         const bi = updatedBreaks.findIndex(b => b.id === brk.id);
-        if (bi >= 0) { updatedBreaks[bi].startTime = activeCursor; updatedBreaks[bi].endTime = addMin(activeCursor, bDur); }
-        if (manualCursor) manualCursor = addMin(activeCursor, bDur);
-        else cursor = addMin(activeCursor, bDur);
-      } else {
-        if (!manualCursor) cursor = updatedStrips[si].endTime;
+        if (bi >= 0) { updatedBreaks[bi].startTime = cursor; updatedBreaks[bi].endTime = addMin(cursor, bDur); }
+        cursor = addMin(cursor, bDur);
       }
     }
 
@@ -202,7 +175,7 @@ const CallSheetModule = ({ project, setProject }) => {
     const resetCrew = {};
     crew.forEach(c => { resetCrew[c.id] = { call: callOnSet }; });
 
-    // Reset cast: onSet = first scene start
+    // Reset cast: onSet = first scene start for that cast member
     const resetCast = {};
     dayCast.forEach(c => {
       let onSet = callOnSet;
@@ -214,6 +187,67 @@ const CallSheetModule = ({ project, setProject }) => {
     });
 
     persistCS({ breaks: updatedBreaks, crew: resetCrew, cast: resetCast });
+    setProject(prev => ({ ...prev, strips: updatedStrips }));
+  };
+
+  /* ── REFRESH FROM SCENE — keeps times up to changed scene, recalculates after ── */
+  const refreshFrom = (fromSceneId) => {
+    if (!day || dayStrips.length === 0) return;
+    const ordered = day.strips;
+    const breakMap = {};
+    csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
+
+    const fromIdx = ordered.indexOf(fromSceneId);
+    if (fromIdx < 0) return;
+
+    const updatedStrips = strips.map(s => ({...s}));
+    const updatedBreaks = csBreaks.map(b => ({...b}));
+
+    // Start cursor from the changed scene's endTime
+    const changedStrip = updatedStrips.find(s => s.id === fromSceneId);
+    if (!changedStrip?.endTime) return;
+    let cursor = changedStrip.endTime;
+
+    // Handle break after the changed scene
+    const brk0 = breakMap[fromSceneId];
+    if (brk0) {
+      const bDur = brk0.duration || 60;
+      const bi = updatedBreaks.findIndex(b => b.id === brk0.id);
+      if (bi >= 0) { updatedBreaks[bi].startTime = cursor; updatedBreaks[bi].endTime = addMin(cursor, bDur); }
+      cursor = addMin(cursor, bDur);
+    }
+
+    // Recalculate scenes after
+    for (let idx = fromIdx + 1; idx < ordered.length; idx++) {
+      const sid = ordered[idx];
+      const si = updatedStrips.findIndex(s => s.id === sid);
+      if (si < 0) continue;
+      const dur = Math.round((updatedStrips[si].pages || 1) * PPM);
+      updatedStrips[si].startTime = cursor;
+      updatedStrips[si].endTime = addMin(cursor, dur);
+      cursor = updatedStrips[si].endTime;
+      const brk = breakMap[sid];
+      if (brk) {
+        const bDur = brk.duration || 60;
+        const bi = updatedBreaks.findIndex(b => b.id === brk.id);
+        if (bi >= 0) { updatedBreaks[bi].startTime = cursor; updatedBreaks[bi].endTime = addMin(cursor, bDur); }
+        cursor = addMin(cursor, bDur);
+      }
+    }
+
+    // Update cast based on new scene times
+    const resetCast = {};
+    dayCast.forEach(c => {
+      let onSet = callOnSet;
+      for (const sid of ordered) {
+        const s = updatedStrips.find(x => x.id === sid);
+        if (s && (s.cast || []).includes(c.id) && s.startTime) { onSet = s.startTime; break; }
+      }
+      const prev = csCast[String(c.id)] || {};
+      resetCast[String(c.id)] = { costume: subMin(onSet, COSTUME_OFFSET), makeup: subMin(onSet, MAKEUP_OFFSET), onSet, notes: prev.notes || "" };
+    });
+
+    persistCS({ breaks: updatedBreaks, cast: resetCast });
     setProject(prev => ({ ...prev, strips: updatedStrips }));
   };
 
@@ -638,7 +672,34 @@ Questions? Contact 1st AD.`;
                   const s = item.data; const loc = gLoc(s.locationId);
                   const nudge = (min) => {
                     const cur = s.endTime || s.startTime || "08:00";
-                    setProject(p => ({...p, strips: p.strips.map(x => x.id === s.id ? {...x, endTime: addMin(cur, min)} : x)}));
+                    const newEnd = addMin(cur, min);
+                    // Cascade: update this scene's endTime, then recalc all scenes after it
+                    setProject(p => {
+                      const ordered = day.strips;
+                      const fromIdx = ordered.indexOf(s.id);
+                      const breakMap = {}; csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
+                      const updated = p.strips.map(x => ({...x}));
+                      // Set this scene
+                      const si = updated.findIndex(x => x.id === s.id);
+                      if (si >= 0) updated[si].endTime = newEnd;
+                      let cursor = newEnd;
+                      // Handle break after this scene
+                      const brk0 = breakMap[s.id];
+                      if (brk0) cursor = addMin(cursor, brk0.duration || 60);
+                      // Cascade subsequent scenes
+                      for (let idx = fromIdx + 1; idx < ordered.length; idx++) {
+                        const sid = ordered[idx];
+                        const xi = updated.findIndex(x => x.id === sid);
+                        if (xi < 0) continue;
+                        const dur = Math.round((updated[xi].pages || 1) * PPM);
+                        updated[xi].startTime = cursor;
+                        updated[xi].endTime = addMin(cursor, dur);
+                        cursor = updated[xi].endTime;
+                        const brk = breakMap[sid];
+                        if (brk) cursor = addMin(cursor, brk.duration || 60);
+                      }
+                      return {...p, strips: updated};
+                    });
                   };
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>
                     <td style={{...tdS,fontWeight:800,color:"#f0f0f0",width:40}}>{s.scene}</td>
@@ -647,8 +708,8 @@ Questions? Contact 1st AD.`;
                       <div style={{display:"flex",alignItems:"center",gap:2}}>
                         <TI value={s.endTime||""} onChange={v=>setProject(p=>({...p,strips:p.strips.map(x=>x.id===s.id?{...x,endTime:v}:x)}))} color="#3b82f6"/>
                         <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                          <button onClick={()=>nudge(5)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px"}}>▲</button>
-                          <button onClick={()=>nudge(-5)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px"}}>▼</button>
+                          <button onClick={()=>nudge(5)} style={{background:"none",border:"1px solid #2a2d35",borderRadius:"3px 3px 0 0",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px",fontFamily:"inherit"}}>▲</button>
+                          <button onClick={()=>nudge(-5)} style={{background:"none",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 3px 3px",color:"#3b82f6",cursor:"pointer",padding:"0 4px",fontSize:8,lineHeight:"12px",fontFamily:"inherit"}}>▼</button>
                         </div>
                       </div>
                     </td>
