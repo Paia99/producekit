@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { STRIP_COLORS, VEHICLE_TYPES, KEY_ROLES, DEPARTMENTS, fmtTime, fmtDate, subMin, addMin, I, IS, AddressInput } from "./config.jsx";
 
 /* ── wider time input ────────────────────────────────────── */
@@ -23,13 +23,19 @@ const TIN = ({ value, onChange, color, bold, step }) => {
   </div>;
 };
 
-const HInput = ({ value, onChange, placeholder, w }) => (
-  <input value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder || ""}
+const HInput = ({ value, onChange, placeholder, w }) => {
+  const [local, setLocal] = useState(value || "");
+  const ref = useRef(null);
+  useEffect(() => { setLocal(value || ""); }, [value]);
+  return <input ref={ref} value={local} onChange={e => setLocal(e.target.value)}
+    onBlur={() => { if (local !== (value || "")) onChange(local); }}
+    onKeyDown={e => { if (e.key === "Enter") { onChange(local); ref.current?.blur(); } }}
+    placeholder={placeholder || ""}
     style={{ background:"transparent", border:"1px solid #2a2d35", borderRadius:3,
       color:"#ccc", fontSize:10, padding:"2px 6px",
       width: w || "100%", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
-    onClick={e => e.stopPropagation()} />
-);
+    onClick={e => e.stopPropagation()} />;
+};
 
 const SH = ({ children, right }) => (
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"18px 0 8px",borderBottom:"1px solid #222",paddingBottom:6}}>
@@ -700,15 +706,15 @@ Questions? Contact 1st AD.`;
                 <option value="manual">— Manual —</option>
                 {locations.map(l => <option key={l.id} value={l.id}>{l.name} — {l.address}</option>)}
               </select>
-              {!h.basecampId && <AddressInput value={h.basecampManual||""} onChange={v=>setH({basecampManual:v})} placeholder="Type address..." style={{fontSize:10,padding:"4px 6px"}} />}
+              {!h.basecampId && <HInput value={h.basecampManual||""} onChange={v=>setH({basecampManual:v})} placeholder="Type address..." w="100%" />}
             </div>
             <div style={{marginBottom:8}}>
               <div style={{fontSize:9,fontWeight:700,color:"#666",marginBottom:3}}>MUA + COSTUMES</div>
-              <AddressInput value={h.muaCostumeAddr||""} onChange={v=>setH({muaCostumeAddr:v})} placeholder="Makeup & costumes..." style={{fontSize:10,padding:"4px 6px"}} />
+              <HInput value={h.muaCostumeAddr||""} onChange={v=>setH({muaCostumeAddr:v})} placeholder="Makeup & costumes address..." w="100%" />
             </div>
             <div>
               <div style={{fontSize:9,fontWeight:700,color:"#ef4444",marginBottom:3}}>🏥 HOSPITAL</div>
-              <AddressInput value={h.hospital||""} onChange={v=>setH({hospital:v})} placeholder="Nearest hospital..." style={{fontSize:10,padding:"4px 6px"}} />
+              <HInput value={h.hospital||""} onChange={v=>setH({hospital:v})} placeholder="Nearest hospital..." w="100%" />
             </div>
           </div>
 

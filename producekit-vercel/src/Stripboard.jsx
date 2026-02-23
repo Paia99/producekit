@@ -5,25 +5,44 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
   const [selDayId, setSelDayId] = useState(null);
   const [rightSearch, setRightSearch] = useState("");
   const [rightFilter, setRightFilter] = useState("All");
+  const [fLoc, setFLoc] = useState(""); // filter by location
+  const [fCast, setFCast] = useState(""); // filter by cast member
+  const [fPgMin, setFPgMin] = useState(""); // min pages
+  const [fPgMax, setFPgMax] = useState(""); // max pages
+  const [showFilters, setShowFilters] = useState(false);
 
   const gLoc = id => locations.find(x => x.id === id)?.name || "—";
   const getCastStr = (ids) => (ids || []).map(id => cast.find(c => c.id === id)?.roleNum).filter(Boolean).join(", ");
 
-  const unassigned = strips.filter(s => !days.some(d => d.strips.includes(s.id)));
-  const selDay = days.find(d => d.id === selDayId);
-  const selDayStrips = selDay ? selDay.strips.map(sid => strips.find(s => s.id === sid)).filter(Boolean) : [];
-  const selDayPages = selDayStrips.reduce((s, x) => s + (x.pages || 0), 0);
-
-  // Filter unassigned scenes
-  const filteredUnassigned = unassigned.filter(s => {
+  // Universal filter function
+  const matchesFilter = (s) => {
     if (rightFilter !== "All" && s.type !== rightFilter) return false;
+    if (fLoc && s.locationId !== fLoc) return false;
+    if (fCast && !(s.cast || []).includes(fCast)) return false;
+    if (fPgMin && (s.pages || 0) < Number(fPgMin)) return false;
+    if (fPgMax && (s.pages || 0) > Number(fPgMax)) return false;
     if (rightSearch) {
       const q = rightSearch.toLowerCase();
       const str = `sc ${s.scene} ${s.synopsis || ""} ${gLoc(s.locationId)} ${getCastStr(s.cast)}`.toLowerCase();
       if (!str.includes(q)) return false;
     }
     return true;
-  }).sort((a, b) => (parseInt(a.scene) || 0) - (parseInt(b.scene) || 0));
+  };
+
+  const hasActiveFilters = rightFilter !== "All" || fLoc || fCast || fPgMin || fPgMax || rightSearch;
+  const clearFilters = () => { setRightFilter("All"); setFLoc(""); setFCast(""); setFPgMin(""); setFPgMax(""); setRightSearch(""); };
+
+  const unassigned = strips.filter(s => !days.some(d => d.strips.includes(s.id)));
+  const selDay = days.find(d => d.id === selDayId);
+  const selDayStrips = selDay ? selDay.strips.map(sid => strips.find(s => s.id === sid)).filter(Boolean) : [];
+  const selDayPages = selDayStrips.reduce((s, x) => s + (x.pages || 0), 0);
+
+  const filteredUnassigned = unassigned.filter(matchesFilter).sort((a, b) => (parseInt(a.scene) || 0) - (parseInt(b.scene) || 0));
+
+  // Unique values for filter dropdowns
+  const usedLocIds = [...new Set(strips.map(s => s.locationId).filter(Boolean))];
+  const usedCastIds = [...new Set(strips.flatMap(s => s.cast || []))];
+  const fS = {background:"#12141a",border:"1px solid #2a2d35",borderRadius:4,color:"#ccc",fontSize:11,padding:"5px 8px",fontFamily:"inherit",outline:"none",cursor:"pointer"};
 
   // Assign scene to selected day
   const assignScene = (sid) => {
@@ -96,7 +115,7 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
   );
 
   return <div>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
       <div>
         <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#f0f0f0"}}>Stripboard</h2>
         <p style={{margin:"4px 0 0",color:"#888",fontSize:13}}>
@@ -104,7 +123,37 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
           {days.length === 0 && <span style={{color:"#f59e0b",marginLeft:8}}>Add shoot days in Calendar</span>}
         </p>
       </div>
+      <button onClick={()=>setShowFilters(!showFilters)} style={{...BS,padding:"6px 14px",fontSize:11,background:hasActiveFilters?"#3b82f618":"transparent",borderColor:hasActiveFilters?"#3b82f644":"#2a2d35",color:hasActiveFilters?"#3b82f6":"#888"}}>
+        <I.Filter/> <span style={{marginLeft:4}}>Filters</span> {hasActiveFilters&&<span style={{background:"#3b82f6",color:"#fff",borderRadius:10,padding:"0 5px",fontSize:9,marginLeft:4}}>ON</span>}
+      </button>
     </div>
+
+    {/* Filter bar */}
+    {showFilters && <div style={{display:"flex",gap:8,marginBottom:12,padding:"10px 14px",background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:8,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{position:"relative",flex:"1 1 140px",minWidth:120}}>
+        <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#555",fontSize:12}}><I.Search/></span>
+        <input placeholder="Search..." value={rightSearch} onChange={e=>setRightSearch(e.target.value)} style={{...fS,paddingLeft:28,width:"100%"}}/>
+      </div>
+      <select value={rightFilter} onChange={e=>setRightFilter(e.target.value)} style={{...fS,minWidth:80}}>
+        <option value="All">All types</option>
+        {Object.keys(STRIP_COLORS).map(t=><option key={t}>{t}</option>)}
+      </select>
+      <select value={fLoc} onChange={e=>setFLoc(e.target.value)} style={{...fS,minWidth:100}}>
+        <option value="">All locations</option>
+        {usedLocIds.map(id=><option key={id} value={id}>{locations.find(l=>l.id===id)?.name||id}</option>)}
+      </select>
+      <select value={fCast} onChange={e=>setFCast(e.target.value)} style={{...fS,minWidth:100}}>
+        <option value="">All cast</option>
+        {usedCastIds.map(id=>{const c=cast.find(x=>x.id===id);return<option key={id} value={id}>#{c?.roleNum} {c?.name||id}</option>;})}
+      </select>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <span style={{fontSize:10,color:"#666"}}>Pgs</span>
+        <input type="number" value={fPgMin} onChange={e=>setFPgMin(e.target.value)} placeholder="min" style={{...fS,width:48,textAlign:"center"}}/>
+        <span style={{color:"#555"}}>–</span>
+        <input type="number" value={fPgMax} onChange={e=>setFPgMax(e.target.value)} placeholder="max" style={{...fS,width:48,textAlign:"center"}}/>
+      </div>
+      {hasActiveFilters&&<button onClick={clearFilters} style={{background:"none",border:"1px solid #ef444444",borderRadius:4,color:"#ef4444",cursor:"pointer",padding:"4px 10px",fontSize:10,fontFamily:"inherit"}}>Clear</button>}
+    </div>}
 
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,alignItems:"start"}}>
 
@@ -154,7 +203,12 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
               {selDay && <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}>
                 <button onClick={estTimes} style={{...BS,padding:"3px 10px",fontSize:10}}><I.Clock/> <span style={{marginLeft:3}}>Estimate Times</span></button>
               </div>}
-              {ds.map((s, i) => <SceneStrip key={s.id} strip={s} dayId={day.id} index={i} total={ds.length} mode="day"/>)}
+              {ds.map((s, i) => {
+                const match = matchesFilter(s);
+                return <div key={s.id} style={{opacity:hasActiveFilters && !match ? 0.25 : 1}}>
+                  <SceneStrip strip={s} dayId={day.id} index={i} total={ds.length} mode="day"/>
+                </div>;
+              })}
               {ds.length === 0 && <div style={{textAlign:"center",padding:16,color:"#444",fontSize:12,fontStyle:"italic"}}>
                 No scenes assigned. Click a scene in the right panel to add it here.
               </div>}
@@ -166,19 +220,7 @@ const StripboardModule = ({ strips, setStrips, days, setDays, locations, cast })
       {/* RIGHT PANEL — Unassigned Scene Pool */}
       <div>
         <div style={{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>
-          Unassigned Scenes ({unassigned.length})
-        </div>
-
-        {/* Search & filter */}
-        <div style={{display:"flex",gap:6,marginBottom:10}}>
-          <div style={{position:"relative",flex:1}}>
-            <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#555"}}><I.Search/></span>
-            <input placeholder="Search scenes..." value={rightSearch} onChange={e=>setRightSearch(e.target.value)} style={{...IS,paddingLeft:30,fontSize:12,padding:"6px 10px 6px 30px"}}/>
-          </div>
-          <select value={rightFilter} onChange={e=>setRightFilter(e.target.value)} style={{...IS,width:100,cursor:"pointer",padding:"6px 8px",fontSize:12}}>
-            <option value="All">All</option>
-            {Object.keys(STRIP_COLORS).map(t=><option key={t}>{t}</option>)}
-          </select>
+          Unassigned Scenes ({filteredUnassigned.length}{hasActiveFilters ? `/${unassigned.length}` : ""})
         </div>
 
         {!selDay && unassigned.length > 0 && (
