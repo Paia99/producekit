@@ -252,19 +252,53 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           {route.gmapsUrl&&<a href={route.gmapsUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:10,fontSize:11,color:"#3b82f6",textDecoration:"none"}}>Open in Google Maps <I.ExternalLink/></a>}
           {/* Additional Runs */}
           {route.runs&&route.runs.length>0&&route.runs.map((run,ri)=>{const rDest=run.stops.find(s=>s.type==="destination");const rPk=run.stops.filter(s=>s.type==="pickup");const rDLoc=locations.find(l=>l.id===rDest?.locationId);
+          const updateRunStop=(stopIdx,field,value)=>{
+            setRoutes(p=>p.map(x=>{
+              if(x.id!==route.id)return x;
+              const newRuns=[...(x.runs||[])];
+              const r={...newRuns[ri],stops:[...newRuns[ri].stops]};
+              const pkOnly=r.stops.filter(s=>s.type==="pickup");
+              const realIdx=r.stops.indexOf(r.stops.filter(s=>s.type==="pickup")[stopIdx]);
+              if(realIdx>=0)r.stops[realIdx]={...r.stops[realIdx],[field]:value};
+              // Auto-fill address when person selected
+              if(field==="personId"&&value){
+                const stop=r.stops[realIdx];
+                const p=allP.find(pp=>String(pp.id)===String(value)&&pp.type===stop.personType);
+                if(p&&p.address)r.stops[realIdx].address=p.address;
+              }
+              newRuns[ri]=r;
+              return{...x,runs:newRuns};
+            }));
+          };
+          const removeRunStop=(stopIdx)=>{
+            setRoutes(p=>p.map(x=>{
+              if(x.id!==route.id)return x;
+              const newRuns=[...(x.runs||[])];
+              const r={...newRuns[ri],stops:newRuns[ri].stops.filter((s,j)=>{
+                if(s.type!=="pickup")return true;
+                let pkCount=0;
+                for(let k=0;k<=j;k++)if(newRuns[ri].stops[k].type==="pickup")pkCount++;
+                return(pkCount-1)!==stopIdx;
+              })};
+              newRuns[ri]=r;
+              return{...x,runs:newRuns};
+            }));
+          };
           return<div key={ri} style={{marginTop:14,paddingTop:14,borderTop:"1px dashed #333"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <span style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{run.runLabel||`Trip ${ri+2}`}</span>
               <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>{const newRuns=[...(route.runs||[])];const r=newRuns[ri];const newStops=[...r.stops];const di=newStops.findIndex(x=>x.type==="destination");newStops.splice(di,0,{type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15});newRuns[ri]={...r,stops:newStops};setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Plus/> Stop</button>
+                <button onClick={()=>{const newRuns=[...(route.runs||[])];const r=newRuns[ri];const newStops=[...r.stops];const di=newStops.findIndex(x=>x.type==="destination");newStops.splice(di>=0?di:newStops.length,0,{type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15});newRuns[ri]={...r,stops:newStops};setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Plus/> Stop</button>
                 <button onClick={()=>{const newRuns=(route.runs||[]).filter((_,j)=>j!==ri);setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
               </div>
             </div>
-            {rPk.length===0&&<div style={{fontSize:11,color:"#555",fontStyle:"italic",marginBottom:6}}>No pickups yet — add stops above</div>}
-            {rPk.map((s,si)=><div key={si} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",background:"#12141a",borderRadius:6,border:"1px solid #1e2028",marginBottom:4}}>
+            {rPk.length===0&&<div style={{fontSize:11,color:"#555",fontStyle:"italic",marginBottom:6}}>No pickups — click + Stop</div>}
+            {rPk.map((s,si)=><div key={si} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
               <span style={{width:18,height:18,borderRadius:"50%",background:"#f59e0b18",color:"#f59e0b",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{si+1}</span>
-              <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}</div><div style={{fontSize:10,color:"#888"}}>{s.address}</div></div>
-              {s.pickupTime&&<span style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{fmtTime(s.pickupTime)}</span>}
+              <select value={s.personType||"cast"} onChange={e=>updateRunStop(si,"personType",e.target.value)} style={{...IS,width:70,fontSize:10,padding:"4px 6px"}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
+              <select value={s.personId||""} onChange={e=>updateRunStop(si,"personId",e.target.value)} style={{...IS,flex:1,fontSize:10,padding:"4px 6px"}}><option value="">— Select —</option>{allP.filter(p=>p.type===(s.personType||"cast")).map(p=><option key={p.id} value={p.id}>{p.roleNum?`#${p.roleNum} `:""}{p.name}</option>)}</select>
+              <input value={s.address||""} onChange={e=>updateRunStop(si,"address",e.target.value)} placeholder="Address" style={{...IS,flex:1,fontSize:10,padding:"4px 6px"}}/>
+              <button onClick={()=>removeRunStop(si)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
             </div>)}
             {rDest&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",background:"#22c55e08",borderRadius:6,border:"1px solid #22c55e22"}}>
               <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{"\u2713"}</span>

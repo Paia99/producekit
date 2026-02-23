@@ -84,11 +84,14 @@ const CallSheetModule = ({ project, setProject }) => {
   /* ── persist ───────────────────────────────────────────── */
   const persistCS = (patch) => {
     if (!day || !setProject) return;
-    const newCS = { ...cs, ...patch };
-    setProject(prev => ({
-      ...prev,
-      days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d),
-    }));
+    setProject(prev => {
+      const currentDay = prev.days.find(d => d.id === selDayId);
+      const currentCS = currentDay?.callSheet || {};
+      const newCS = { ...currentCS, ...patch };
+      // If patch has header, merge with current header (don't replace)
+      if (patch.header) newCS.header = { ...currentCS.header, ...patch.header };
+      return { ...prev, days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d) };
+    });
   };
 
   const setH = (patch) => persistCS({ header: { ...csHeader, ...patch } });
@@ -413,7 +416,7 @@ const CallSheetModule = ({ project, setProject }) => {
 
     const castRows = sortedCast.map(c => {
       const d = getCastCS(c.id); const scenes = castScenes(c.id); const pickup = getPickup(c.id);
-      return `<tr><td class="sc">${c.roleNum}</td><td>${c.roleName}</td><td class="b">${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td class="mono">${pickup ? fmtTime(pickup) : "—"}</td><td class="mono">${fmtTime(d.costume)}</td><td class="mono">${fmtTime(d.makeup)}</td><td class="mono b">${fmtTime(d.onSet)}</td></tr>`;
+      return `<tr><td class="sc">${c.roleNum}</td><td>${c.roleName}</td><td class="b">${c.name}</td><td>${scenes.map(s=>s.scene).join(", ")}</td><td class="mono tight">${pickup ? fmtTime(pickup) : "—"}</td><td class="mono tight">${fmtTime(d.costume)}</td><td class="mono tight">${fmtTime(d.makeup)}</td><td class="mono tight b">${fmtTime(d.onSet)}</td><td style="font-size:7.5px;color:#666">${d.notes||""}</td></tr>`;
     }).join("");
 
     // Crew grouped by department
@@ -461,12 +464,12 @@ body{font-family:'Manrope',system-ui,sans-serif;font-size:9px;color:#111;padding
 .info-col{padding:6px 10px;border-right:1px solid #ddd}
 .info-col:last-child{border-right:none}
 .info-col .col-title{font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:2px}
-.info-row{display:flex;justify-content:space-between;padding:1px 0;font-size:8.5px}
-.info-row .k{color:#666;font-weight:600;min-width:65px}
-.info-row .v{font-weight:700;text-align:right}
+.info-row{display:flex;justify-content:space-between;padding:2px 0;font-size:9.5px}
+.info-row .k{color:#444;font-weight:700;min-width:70px;font-size:9.5px}
+.info-row .v{font-weight:800;text-align:right}
 .info-row .v.green{color:#16a34a}
 .info-row .v.red{color:#dc2626}
-.info-row .v.big{font-size:10px}
+.info-row .v.big{font-size:11px}
 
 /* Section headers */
 h2{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#333;margin:8px 0 3px;padding:2px 0;border-bottom:1.5px solid #111}
@@ -477,6 +480,7 @@ th{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
 td{padding:2px 4px;font-size:8.5px;border-bottom:0.5px solid #e5e5e5;vertical-align:top}
 .sc{font-weight:800;width:28px}
 .mono{font-family:'Roboto Mono',monospace;font-size:8px;font-weight:600}
+.mono.tight{padding:2px 2px;white-space:nowrap}
 .b{font-weight:700}
 .r{text-align:right}
 .cast{color:#92400E;font-weight:600;font-size:8px}
@@ -548,7 +552,7 @@ ${h.announcements ? `<div class="announce">📢 ${h.announcements}</div>` : ""}
 <!-- CAST -->
 <h2>Cast · ${dayCast.length}</h2>
 <table>
-  <thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Pickup</th><th>Costume</th><th>Makeup</th><th>On Set</th></tr></thead>
+  <thead><tr><th>#</th><th>Character</th><th>Actor</th><th>Scenes</th><th>Pickup</th><th>Costume</th><th>Makeup</th><th>On Set</th><th>Notes</th></tr></thead>
   <tbody>${castRows}</tbody>
 </table>
 
