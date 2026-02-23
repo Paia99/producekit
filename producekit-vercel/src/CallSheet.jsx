@@ -88,13 +88,21 @@ const CallSheetModule = ({ project, setProject }) => {
       const currentDay = prev.days.find(d => d.id === selDayId);
       const currentCS = currentDay?.callSheet || {};
       const newCS = { ...currentCS, ...patch };
-      // If patch has header, merge with current header (don't replace)
-      if (patch.header) newCS.header = { ...currentCS.header, ...patch.header };
       return { ...prev, days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d) };
     });
   };
 
-  const setH = (patch) => persistCS({ header: { ...csHeader, ...patch } });
+  // setH merges header patch into current header using functional update
+  const setH = (patch) => {
+    if (!day || !setProject) return;
+    setProject(prev => {
+      const currentDay = prev.days.find(d => d.id === selDayId);
+      const currentCS = currentDay?.callSheet || {};
+      const currentHeader = currentCS.header || {};
+      const newCS = { ...currentCS, header: { ...currentHeader, ...patch } };
+      return { ...prev, days: prev.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d) };
+    });
+  };
   const updateContact = (key, field, value) => {
     const contacts = csHeader.contacts || {};
     const current = contacts[key] || {};
@@ -748,16 +756,20 @@ Questions? Contact 1st AD.`;
                   const nudge = (min) => {
                     const cur = s.endTime || s.startTime || "08:00";
                     const newEnd = addMin(cur, min);
+                    // Atomic update: strips + breaks together
                     setProject(p => {
+                      const currentDay = p.days.find(d => d.id === selDayId);
+                      const currentCS = currentDay?.callSheet || {};
+                      const currentBreaks = (currentCS.breaks || []).map(b => ({...b}));
+                      const breakMap = {}; currentBreaks.forEach(b => { breakMap[b.afterScene] = b; });
                       const ordered = day.strips;
                       const fromIdx = ordered.indexOf(s.id);
-                      const breakMap = {}; csBreaks.forEach(b => { breakMap[b.afterScene] = b; });
                       const updated = p.strips.map(x => ({...x}));
                       const si = updated.findIndex(x => x.id === s.id);
                       if (si >= 0) updated[si].endTime = newEnd;
                       let cursor = newEnd;
                       const brk0 = breakMap[s.id];
-                      if (brk0) cursor = addMin(cursor, brk0.duration || 60);
+                      if (brk0) { brk0.startTime = cursor; brk0.endTime = addMin(cursor, brk0.duration || 60); cursor = brk0.endTime; }
                       for (let idx = fromIdx + 1; idx < ordered.length; idx++) {
                         const sid = ordered[idx];
                         const xi = updated.findIndex(x => x.id === sid);
@@ -767,9 +779,10 @@ Questions? Contact 1st AD.`;
                         updated[xi].endTime = addMin(cursor, dur);
                         cursor = updated[xi].endTime;
                         const brk = breakMap[sid];
-                        if (brk) cursor = addMin(cursor, brk.duration || 60);
+                        if (brk) { brk.startTime = cursor; brk.endTime = addMin(cursor, brk.duration || 60); cursor = brk.endTime; }
                       }
-                      return {...p, strips: updated};
+                      const newCS = { ...currentCS, breaks: currentBreaks };
+                      return { ...p, strips: updated, days: p.days.map(d => d.id === selDayId ? { ...d, callSheet: newCS } : d) };
                     });
                   };
                   return <tr key={s.id} style={{borderBottom:"1px solid #1e2028"}}>

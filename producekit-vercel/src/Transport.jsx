@@ -191,7 +191,13 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       {[{id:"routes",l:"Routes"},{id:"fleet",l:`Fleet (${vehicles.length})`},{id:"drivers",l:`Drivers (${drivers.length})`}].map(t=><button key={t.id} onClick={()=>setViewMode(t.id)} style={{padding:"7px 16px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:viewMode===t.id?"#E8C94A18":"transparent",border:`1px solid ${viewMode===t.id?"#E8C94A44":"#2a2d35"}`,color:viewMode===t.id?"#E8C94A":"#888"}}>{t.l}</button>)}
     </div>
     {viewMode==="routes"&&<div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>{days.map(d=><button key={d.id} onClick={()=>setSelDay(d.id)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:selDay===d.id?"#3b82f618":"transparent",border:`1px solid ${selDay===d.id?"#3b82f644":"#2a2d35"}`,color:selDay===d.id?"#3b82f6":"#888"}}>{d.label} · {fmtDate(d.date)}</button>)}</div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>{days.map(d=>{
+        const shift = d.callTime && d.wrapTime ? `${fmtTime(d.callTime)}–${fmtTime(d.wrapTime)}` : fmtTime(d.callTime||"06:00");
+        return<button key={d.id} onClick={()=>setSelDay(d.id)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:selDay===d.id?"#3b82f618":"transparent",border:`1px solid ${selDay===d.id?"#3b82f644":"#2a2d35"}`,color:selDay===d.id?"#3b82f6":"#888"}}>
+          <div>{d.label} · {fmtDate(d.date)}</div>
+          <div style={{fontSize:10,fontWeight:400,color:selDay===d.id?"#3b82f6aa":"#666",marginTop:1}}>{shift}</div>
+        </button>;
+      })}</div>
       {/* Cast call times for this day — clean table */}
       {day&&(()=>{const dayStrips=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const dayCastIds=[...new Set(dayStrips.flatMap(s=>s.cast))];const dayCastList=dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(dayCastList.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:8,marginBottom:16,overflow:"hidden"}}>
         <div style={{padding:"8px 12px",borderBottom:"1px solid #1e2028",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -220,7 +226,6 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>calcRoute(route)} disabled={calc===route.id} style={{...BS,padding:"6px 12px",fontSize:11}}>{calc===route.id?<><I.Loader/> Calculating...</>:<><I.Route/> Calculate Route</>}</button>
             {route.optimized&&<button onClick={()=>showDispatch(route)} style={{...BS,padding:"6px 12px",fontSize:11,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/> Dispatch</button>}
-            <button onClick={()=>{const dest=route.stops.find(s=>s.type==="destination");const arrT=dest?.arrivalTime||day?.callTime||"06:00";const turnaround=route.totalDrive?route.totalDrive+15:45;const newRun={runLabel:`Trip ${(route.runs||[]).length+2}`,stops:[{type:"destination",locationId:dest?.locationId||"",address:dest?.address||"",arrivalTime:addMin(arrT,turnaround),estDrive:0}],optimized:false,totalDrive:null,totalDistance:null};setRoutes(p=>p.map(r=>r.id===route.id?{...r,runs:[...(r.runs||[]),newRun]}:r));}} style={{...BS,padding:"6px 12px",fontSize:11}} title="Add another trip with this vehicle"><I.Plus/> Run</button>
             <button onClick={()=>setEditRoute(route)} style={{...BS,padding:"6px 12px",fontSize:11}}><I.Edit/></button>
             <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==route.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:4}}><I.Trash/></button>
           </div>
@@ -250,62 +255,6 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             </div>}
           </div>
           {route.gmapsUrl&&<a href={route.gmapsUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:10,fontSize:11,color:"#3b82f6",textDecoration:"none"}}>Open in Google Maps <I.ExternalLink/></a>}
-          {/* Additional Runs */}
-          {route.runs&&route.runs.length>0&&route.runs.map((run,ri)=>{const rDest=run.stops.find(s=>s.type==="destination");const rPk=run.stops.filter(s=>s.type==="pickup");const rDLoc=locations.find(l=>l.id===rDest?.locationId);
-          const updateRunStop=(stopIdx,field,value)=>{
-            setRoutes(p=>p.map(x=>{
-              if(x.id!==route.id)return x;
-              const newRuns=[...(x.runs||[])];
-              const r={...newRuns[ri],stops:[...newRuns[ri].stops]};
-              const pkOnly=r.stops.filter(s=>s.type==="pickup");
-              const realIdx=r.stops.indexOf(r.stops.filter(s=>s.type==="pickup")[stopIdx]);
-              if(realIdx>=0)r.stops[realIdx]={...r.stops[realIdx],[field]:value};
-              // Auto-fill address when person selected
-              if(field==="personId"&&value){
-                const stop=r.stops[realIdx];
-                const p=allP.find(pp=>String(pp.id)===String(value)&&pp.type===stop.personType);
-                if(p&&p.address)r.stops[realIdx].address=p.address;
-              }
-              newRuns[ri]=r;
-              return{...x,runs:newRuns};
-            }));
-          };
-          const removeRunStop=(stopIdx)=>{
-            setRoutes(p=>p.map(x=>{
-              if(x.id!==route.id)return x;
-              const newRuns=[...(x.runs||[])];
-              const r={...newRuns[ri],stops:newRuns[ri].stops.filter((s,j)=>{
-                if(s.type!=="pickup")return true;
-                let pkCount=0;
-                for(let k=0;k<=j;k++)if(newRuns[ri].stops[k].type==="pickup")pkCount++;
-                return(pkCount-1)!==stopIdx;
-              })};
-              newRuns[ri]=r;
-              return{...x,runs:newRuns};
-            }));
-          };
-          return<div key={ri} style={{marginTop:14,paddingTop:14,borderTop:"1px dashed #333"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <span style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{run.runLabel||`Trip ${ri+2}`}</span>
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>{const newRuns=[...(route.runs||[])];const r=newRuns[ri];const newStops=[...r.stops];const di=newStops.findIndex(x=>x.type==="destination");newStops.splice(di>=0?di:newStops.length,0,{type:"pickup",personType:"cast",personId:"",address:"",pickupTime:"",estDrive:15});newRuns[ri]={...r,stops:newStops};setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Plus/> Stop</button>
-                <button onClick={()=>{const newRuns=(route.runs||[]).filter((_,j)=>j!==ri);setRoutes(p=>p.map(x=>x.id===route.id?{...x,runs:newRuns}:x));}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
-              </div>
-            </div>
-            {rPk.length===0&&<div style={{fontSize:11,color:"#555",fontStyle:"italic",marginBottom:6}}>No pickups — click + Stop</div>}
-            {rPk.map((s,si)=><div key={si} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
-              <span style={{width:18,height:18,borderRadius:"50%",background:"#f59e0b18",color:"#f59e0b",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{si+1}</span>
-              <select value={s.personType||"cast"} onChange={e=>updateRunStop(si,"personType",e.target.value)} style={{...IS,width:70,fontSize:10,padding:"4px 6px"}}><option value="cast">Cast</option><option value="crew">Crew</option></select>
-              <select value={s.personId||""} onChange={e=>updateRunStop(si,"personId",e.target.value)} style={{...IS,flex:1,fontSize:10,padding:"4px 6px"}}><option value="">— Select —</option>{allP.filter(p=>p.type===(s.personType||"cast")).map(p=><option key={p.id} value={p.id}>{p.roleNum?`#${p.roleNum} `:""}{p.name}</option>)}</select>
-              <input value={s.address||""} onChange={e=>updateRunStop(si,"address",e.target.value)} placeholder="Address" style={{...IS,flex:1,fontSize:10,padding:"4px 6px"}}/>
-              <button onClick={()=>removeRunStop(si)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
-            </div>)}
-            {rDest&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",background:"#22c55e08",borderRadius:6,border:"1px solid #22c55e22"}}>
-              <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{"\u2713"}</span>
-              <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#22c55e"}}>ARRIVE — {rDLoc?.name||rDest.address}</div></div>
-              <span style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>{fmtTime(rDest.arrivalTime)}</span>
-            </div>}
-          </div>;})}
         </div>
       </div>;})}
     </div>}
