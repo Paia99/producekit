@@ -105,7 +105,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
               <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
-            <input type="time" value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} style={{...IS,width:120}} title="Depart time"/>
+            <input value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} placeholder="18:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}} title="Depart time (HH:MM)"/>
           </div>
         ))}
         {/* Drop-off stops = people going home */}
@@ -152,7 +152,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
             )}
-            <input type="time" value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
+            <input value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} placeholder="06:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}} title="Arrival time (HH:MM)"/>
           </div>
         ) : null)}
         <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
@@ -544,6 +544,88 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
               <div style={{fontSize:20,fontWeight:800,color:c.color,marginTop:2}}>{c.val}</div>
             </div>)}
           </div>
+
+          {/* Transport Coverage — who's planned, who's not */}
+          {(()=>{
+            // Collect all people who need transport this day
+            const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
+            const dayCastIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
+            const dayCast = dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);
+            const dayCrew = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver");
+
+            // Who has transport assigned (pickup or dropoff in any job)
+            const plannedIds = new Set();
+            allJobs.forEach(j => {
+              (j.pk||[]).forEach(s => { if(s.personId) plannedIds.add(String(s.personId)); });
+              (j.dropoffs||[]).forEach(s => { if(s.personId) plannedIds.add(String(s.personId)); });
+            });
+
+            const unplannedCast = dayCast.filter(c => !plannedIds.has(String(c.id)));
+            const plannedCast = dayCast.filter(c => plannedIds.has(String(c.id)));
+            const unplannedCrew = dayCrew.filter(c => !plannedIds.has(String(c.id)));
+            const plannedCrew = dayCrew.filter(c => plannedIds.has(String(c.id)));
+            const totalNeeded = dayCast.length + dayCrew.length;
+            const totalPlanned = plannedCast.length + plannedCrew.length;
+            const pct = totalNeeded > 0 ? Math.round((totalPlanned / totalNeeded) * 100) : 0;
+
+            return <div style={{marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.05em"}}>Transport Coverage</div>
+                <div style={{fontSize:11,color:pct===100?"#22c55e":"#f59e0b",fontWeight:700}}>{totalPlanned}/{totalNeeded} covered ({pct}%)</div>
+              </div>
+              {/* Progress bar */}
+              <div style={{height:4,background:"#2a2d35",borderRadius:2,marginBottom:10,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#22c55e":"#E8C94A",borderRadius:2,transition:"width 0.3s"}}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {/* Cast */}
+                <div style={{background:"#12141a",border:"1px solid #2a2d35",borderRadius:8,overflow:"hidden"}}>
+                  <div style={{padding:"6px 10px",borderBottom:"1px solid #1e2028",display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:9,fontWeight:700,color:"#E8C94A",textTransform:"uppercase"}}>Cast ({dayCast.length})</span>
+                    <span style={{fontSize:9,color:unplannedCast.length>0?"#ef4444":"#22c55e",fontWeight:700}}>{unplannedCast.length>0?`${unplannedCast.length} missing`:"All covered ✓"}</span>
+                  </div>
+                  <div style={{padding:6,maxHeight:160,overflow:"auto"}}>
+                    {dayCast.map(c => {
+                      const planned = plannedIds.has(String(c.id));
+                      // Find which job they're in
+                      const inJob = planned ? allJobs.find(j => 
+                        (j.pk||[]).some(s=>String(s.personId)===String(c.id)) || 
+                        (j.dropoffs||[]).some(s=>String(s.personId)===String(c.id))
+                      ) : null;
+                      return <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 6px",borderRadius:4,background:planned?"transparent":"#ef444408"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:planned?"#22c55e":"#ef4444",flexShrink:0}}/>
+                        <span style={{fontSize:10,fontWeight:700,color:"#E8C94A",width:18}}>{c.roleNum}</span>
+                        <span style={{fontSize:11,color:planned?"#aaa":"#f0f0f0",fontWeight:planned?400:600,flex:1}}>{c.name}</span>
+                        {inJob&&<span style={{fontSize:9,color:inJob.v?.color||"#666"}}>{inJob.v?.label}</span>}
+                      </div>;
+                    })}
+                  </div>
+                </div>
+                {/* Crew */}
+                <div style={{background:"#12141a",border:"1px solid #2a2d35",borderRadius:8,overflow:"hidden"}}>
+                  <div style={{padding:"6px 10px",borderBottom:"1px solid #1e2028",display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase"}}>Crew ({dayCrew.length})</span>
+                    <span style={{fontSize:9,color:unplannedCrew.length>0?"#ef4444":"#22c55e",fontWeight:700}}>{unplannedCrew.length>0?`${unplannedCrew.length} missing`:"All covered ✓"}</span>
+                  </div>
+                  <div style={{padding:6,maxHeight:160,overflow:"auto"}}>
+                    {dayCrew.map(c => {
+                      const planned = plannedIds.has(String(c.id));
+                      const inJob = planned ? allJobs.find(j => 
+                        (j.pk||[]).some(s=>String(s.personId)===String(c.id)) || 
+                        (j.dropoffs||[]).some(s=>String(s.personId)===String(c.id))
+                      ) : null;
+                      return <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 6px",borderRadius:4,background:planned?"transparent":"#ef444408"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:planned?"#22c55e":"#ef4444",flexShrink:0}}/>
+                        <span style={{fontSize:11,color:planned?"#aaa":"#f0f0f0",fontWeight:planned?400:600,flex:1}}>{c.name}</span>
+                        <span style={{fontSize:9,color:"#666"}}>{c.dept}</span>
+                        {inJob&&<span style={{fontSize:9,color:inJob.v?.color||"#666"}}>{inJob.v?.label}</span>}
+                      </div>;
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>;
+          })()}
 
           {/* Timeline */}
           <div style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Timeline — {day?.label}</div>
