@@ -19,9 +19,16 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
     (initial.stops || []).map((s, i) => ({ ...s, _id: s._id || "init_" + i + "_" + Date.now() }))
   );
 
+  const isReturn = jobType === "wrap_return";
+
   const addStop = () => {
     const newId = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
     setStops(prev => {
+      if (isReturn) {
+        // For returns: add drop-off stop after origin, before any existing drop-offs' end
+        const ns = { _id: newId, type: "dropoff", personType: "cast", personId: "", address: "", dropoffTime: "", estDrive: 15, distance: "", trafficNote: "" };
+        return [...prev, ns];
+      }
       const di = prev.findIndex(x => x.type === "destination");
       const ns = { _id: newId, type: "pickup", personType: "cast", personId: "", address: "", pickupTime: "", estDrive: 15, distance: "", trafficNote: "" };
       const copy = [...prev];
@@ -47,6 +54,32 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
   const removeStop = (id) => setStops(prev => prev.filter(s => s._id !== id));
   const jt = JOB_TYPES.find(t => t.id === jobType) || JOB_TYPES[0];
 
+  // When switching job type, restructure stops
+  const switchJobType = (newType) => {
+    const wasReturn = jobType === "wrap_return";
+    const willReturn = newType === "wrap_return";
+    setJobType(newType);
+    if (!label || JOB_TYPES.some(t => t.label === label)) setLabel(JOB_TYPES.find(t => t.id === newType)?.label || "");
+    if (wasReturn !== willReturn) {
+      // Restructure stops
+      if (willReturn) {
+        // Convert pickup→destination to origin→dropoffs
+        const dest = stops.find(s => s.type === "destination");
+        const pickups = stops.filter(s => s.type === "pickup");
+        const origin = { _id: "origin_" + Date.now(), type: "origin", locationId: dest?.locationId || "", address: dest?.address || "", departTime: dest?.arrivalTime || day?.wrapTime || "18:00" };
+        const dropoffs = pickups.map(s => ({ ...s, type: "dropoff", dropoffTime: s.pickupTime || "" }));
+        setStops([origin, ...dropoffs]);
+      } else {
+        // Convert origin→dropoffs back to pickup→destination
+        const origin = stops.find(s => s.type === "origin");
+        const dropoffs = stops.filter(s => s.type === "dropoff");
+        const dest = { _id: "dest_" + Date.now(), type: "destination", locationId: origin?.locationId || "", address: origin?.address || "", arrivalTime: origin?.departTime || day?.callTime || "06:00" };
+        const pickups = dropoffs.map(s => ({ ...s, type: "pickup", pickupTime: s.dropoffTime || "" }));
+        setStops([...pickups, dest]);
+      }
+    }
+  };
+
   const handleSave = () => {
     onSave({ ...initial, label: label || jt.label, jobType, notes, stops, status: initial.status || "draft" });
   };
@@ -54,42 +87,77 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
   return <>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
       <div><label style={LS}>Job Type</label>
-        <select value={jobType} onChange={e=>{setJobType(e.target.value);if(!label||JOB_TYPES.some(t=>t.label===label))setLabel(JOB_TYPES.find(t=>t.id===e.target.value)?.label||"");}} style={IS}>
+        <select value={jobType} onChange={e=>switchJobType(e.target.value)} style={IS}>
           {JOB_TYPES.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
         </select>
       </div>
       <div><label style={LS}>Label</label><input value={label} onChange={e=>setLabel(e.target.value)} style={IS}/></div>
     </div>
-    <div style={{marginBottom:12}}>
-      <label style={LS}>Stops ({stops.length})</label>
-      {stops.map(s => s.type === "pickup" ? (
-        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-          <select value={s.personType} onChange={e=>updateStop(s._id,"personType",e.target.value)} style={{...IS,width:80}}>
-            <option value="cast">Cast</option><option value="crew">Crew</option>
-          </select>
-          <select value={s.personId||""} onChange={e=>updateStop(s._id,"personId",e.target.value)} style={{...IS,flex:1}}>
-            <option value="">— Select —</option>
-            {allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}
-          </select>
-          <AddressInput value={s.address} onChange={v=>updateStop(s._id,"address",v)} placeholder="Address" style={{flex:1}}/>
-          <button onClick={()=>removeStop(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
-        </div>
-      ) : (
-        <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
-          <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:60,flexShrink:0}}>DEST</span>
-          <button onClick={()=>updateStop(s._id,"manualAddr",!s.manualAddr)} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
-          {!s.manualAddr ? (
+
+    {isReturn ? (
+      /* ── RETURN/WRAP: Origin (location) → Drop-off stops ── */
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Route</label>
+        {/* Origin = shoot location */}
+        {stops.filter(s=>s.type==="origin").map(s=>(
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:8,background:"#3b82f608",borderRadius:6,border:"1px solid #3b82f622"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#3b82f6",width:70,flexShrink:0}}>PICKUP</span>
             <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
-              <option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+              <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
-          ) : (
-            <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
-          )}
-          <input type="time" value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
-        </div>
-      ))}
-      <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
-    </div>
+            <input type="time" value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} style={{...IS,width:120}} title="Depart time"/>
+          </div>
+        ))}
+        {/* Drop-off stops = people going home */}
+        {stops.filter(s=>s.type==="dropoff").map((s,i)=>(
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+            <span style={{width:22,height:22,borderRadius:"50%",background:"#a855f718",color:"#a855f7",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+            <select value={s.personType} onChange={e=>updateStop(s._id,"personType",e.target.value)} style={{...IS,width:80}}>
+              <option value="cast">Cast</option><option value="crew">Crew</option>
+            </select>
+            <select value={s.personId||""} onChange={e=>updateStop(s._id,"personId",e.target.value)} style={{...IS,flex:1}}>
+              <option value="">— Select —</option>
+              {allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name}</option>)}
+            </select>
+            <AddressInput value={s.address} onChange={v=>updateStop(s._id,"address",v)} placeholder="Drop-off address" style={{flex:1}}/>
+            <button onClick={()=>removeStop(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
+          </div>
+        ))}
+        <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Drop-off</button>
+      </div>
+    ) : (
+      /* ── PICKUP: Pickup stops → Destination ── */
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Stops ({stops.length})</label>
+        {stops.map(s => s.type === "pickup" ? (
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+            <select value={s.personType} onChange={e=>updateStop(s._id,"personType",e.target.value)} style={{...IS,width:80}}>
+              <option value="cast">Cast</option><option value="crew">Crew</option>
+            </select>
+            <select value={s.personId||""} onChange={e=>updateStop(s._id,"personId",e.target.value)} style={{...IS,flex:1}}>
+              <option value="">— Select —</option>
+              {allP.filter(p=>p.type===s.personType).map(p=><option key={p.id} value={p.id}>{p.roleNum ? `#${p.roleNum} ` : ""}{p.name} ({p.role})</option>)}
+            </select>
+            <AddressInput value={s.address} onChange={v=>updateStop(s._id,"address",v)} placeholder="Address" style={{flex:1}}/>
+            <button onClick={()=>removeStop(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
+          </div>
+        ) : s.type === "destination" ? (
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,padding:8,background:"#22c55e08",borderRadius:6}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:60,flexShrink:0}}>DEST</span>
+            <button onClick={()=>updateStop(s._id,"manualAddr",!s.manualAddr)} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
+            {!s.manualAddr ? (
+              <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
+                <option value="">—</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            ) : (
+              <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
+            )}
+            <input type="time" value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} style={{...IS,width:120}}/>
+          </div>
+        ) : null)}
+        <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
+      </div>
+    )}
     {/* Cast call times reference */}
     {day&&(()=>{const ds=day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean);const ids=[...new Set(ds.flatMap(s=>s.cast))];const cl=ids.map(id=>cast.find(c=>c.id===id)).filter(Boolean);if(cl.length===0)return null;return<div style={{background:"#12141a",border:"1px solid #1e2028",borderRadius:6,marginBottom:12,overflow:"hidden"}}>
       <div style={{padding:"6px 10px",borderBottom:"1px solid #1a1d23",fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase"}}>Cast — {day.label} · earliest arrival needed</div>
@@ -147,13 +215,33 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   });
 
   const calcRoute = async (job) => {
-    const pk=job.stops.filter(s=>s.type==="pickup");if(pk.length===0)return;
+    const isReturnJob = job.jobType === "wrap_return";
+    const stops = isReturnJob ? job.stops.filter(s=>s.type==="dropoff") : job.stops.filter(s=>s.type==="pickup");
+    if(stops.length===0)return;
     setCalc(job.id);setCalcErr("");
     try{
-      const result=await callRouteOptimize(job,vehicles,crew,cast,day);
+      // For return jobs, convert to pickup-like structure for the API
+      let apiJob = job;
+      if (isReturnJob) {
+        const origin = job.stops.find(s=>s.type==="origin");
+        const fakePickups = job.stops.filter(s=>s.type==="dropoff").map(s=>({...s, type:"pickup", pickupTime:s.dropoffTime||""}));
+        const lastDropoff = fakePickups[fakePickups.length-1];
+        const fakeDest = { type:"destination", address:lastDropoff?.address||"", arrivalTime:"", locationId:"", estDrive:0 };
+        apiJob = {...job, stops:[...fakePickups, fakeDest], _originAddress: origin?.address||""};
+      }
+      const result=await callRouteOptimize(apiJob,vehicles,crew,cast,day);
       if(result.error){setCalcErr(result.error);setCalc(null);return;}
       setRoutes(prev=>prev.map(r=>{
         if(r.id!==job.id)return r;
+        if (isReturnJob) {
+          // Map results back to dropoff structure
+          const origin = r.stops.find(s=>s.type==="origin");
+          const updatedDropoffs = result.schedule.stops.map(s=>{
+            const o=r.stops.find(st=>st.type==="dropoff"&&String(st.personId)===String(s.id));
+            return{type:"dropoff",personType:s.personType||o?.personType||"cast",personId:s.id,address:s.address,dropoffTime:s.pickup_time,estDrive:s.drive_to_next_minutes,distance:s.distance_to_next||"",trafficNote:s.traffic_note||"",_id:o?._id||("d_"+Date.now()+"_"+Math.random().toString(36).slice(2,5))};
+          });
+          return{...r,stops:[{...origin, departTime:result.schedule.driver_depart||origin.departTime},...updatedDropoffs],optimized:true,demo:!!result.demo,gmapsUrl:result.google_maps_url||"",totalDrive:result.total_drive_minutes,totalDistance:result.total_distance_miles,trafficSummary:result.traffic_summary||"",driverDepart:result.schedule.driver_depart};
+        }
         const ns=result.schedule.stops.map(s=>{const o=r.stops.find(st=>st.type==="pickup"&&String(st.personId)===String(s.id));return{type:"pickup",personType:s.personType||o?.personType||"crew",personId:s.id,address:s.address,pickupTime:s.pickup_time,estDrive:s.drive_to_next_minutes,distance:s.distance_to_next||"",trafficNote:s.traffic_note||""};});
         const dest=r.stops.find(s=>s.type==="destination");ns.push({...dest,arrivalTime:result.schedule.arrival||dest.arrivalTime});
         return{...r,stops:ns,optimized:true,demo:!!result.demo,gmapsUrl:result.google_maps_url||"",totalDrive:result.total_drive_minutes,totalDistance:result.total_distance_miles,trafficSummary:result.traffic_summary||"",driverDepart:result.schedule.driver_depart};
@@ -249,14 +337,24 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     txt += "═".repeat(50) + "\n\n";
     vJobs.forEach((job, i) => {
       const jt = JOB_TYPES.find(t => t.id === job.jobType) || JOB_TYPES[5];
-      const dest = job.stops?.find(s => s.type === "destination");
-      const dLoc = locations.find(l => l.id === dest?.locationId);
+      const isReturnJob = job.jobType === "wrap_return";
       txt += `${jt.icon} JOB ${i+1}: ${job.label}\n`;
-      if (job.driverDepart) txt += `   Depart: ${fmtTime(job.driverDepart)}\n`;
-      job.stops?.filter(s => s.type === "pickup").forEach((s, si) => {
-        txt += `   ${si+1}. ${fmtTime(s.pickupTime)} — ${gPN(s)} · ${s.address}\n`;
-      });
-      txt += `   → ${fmtTime(dest?.arrivalTime)} ARRIVE ${dLoc?.name || dest?.address || ""}\n`;
+      if (isReturnJob) {
+        const origin = job.stops?.find(s => s.type === "origin");
+        const oLoc = locations.find(l => l.id === origin?.locationId);
+        txt += `   Depart: ${fmtTime(origin?.departTime)} from ${oLoc?.name || origin?.address || ""}\n`;
+        job.stops?.filter(s => s.type === "dropoff").forEach((s, si) => {
+          txt += `   ${si+1}. ${gPN(s)} → ${s.address}\n`;
+        });
+      } else {
+        const dest = job.stops?.find(s => s.type === "destination");
+        const dLoc = locations.find(l => l.id === dest?.locationId);
+        if (job.driverDepart) txt += `   Depart: ${fmtTime(job.driverDepart)}\n`;
+        job.stops?.filter(s => s.type === "pickup").forEach((s, si) => {
+          txt += `   ${si+1}. ${fmtTime(s.pickupTime)} — ${gPN(s)} · ${s.address}\n`;
+        });
+        txt += `   → ${fmtTime(dest?.arrivalTime)} ARRIVE ${dLoc?.name || dest?.address || ""}\n`;
+      }
       if (job.gmapsUrl) txt += `   Maps: ${job.gmapsUrl}\n`;
       if (job.notes) txt += `   Note: ${job.notes}\n`;
       txt += "\n";
@@ -276,7 +374,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
     {/* View mode tabs */}
     <div style={{display:"flex",gap:4,marginBottom:16}}>
-      {[{id:"plan",l:"Day Plan"},{id:"fleet",l:`Fleet (${vehicles.length})`},{id:"drivers",l:`Drivers (${drivers.length})`}].map(t=>
+      {[{id:"plan",l:"Day Plan"},{id:"dispatch",l:"Overview"},{id:"fleet",l:`Fleet (${vehicles.length})`},{id:"drivers",l:`Drivers (${drivers.length})`}].map(t=>
         <button key={t.id} onClick={()=>setViewMode(t.id)} style={{padding:"7px 16px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:viewMode===t.id?"#E8C94A18":"transparent",border:`1px solid ${viewMode===t.id?"#E8C94A44":"#2a2d35"}`,color:viewMode===t.id?"#E8C94A":"#888"}}>{t.l}</button>)}
     </div>
 
@@ -325,9 +423,13 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
             {v.jobs.map((job,ji) => {
               const jt = JOB_TYPES.find(t=>t.id===job.jobType) || JOB_TYPES[5];
+              const isReturnJob = job.jobType === "wrap_return";
               const pk = job.stops?.filter(s=>s.type==="pickup") || [];
+              const dropoffs = job.stops?.filter(s=>s.type==="dropoff") || [];
+              const origin = job.stops?.find(s=>s.type==="origin");
               const dest = job.stops?.find(s=>s.type==="destination");
-              const dLoc = locations.find(l=>l.id===dest?.locationId);
+              const dLoc = dest ? locations.find(l=>l.id===dest.locationId) : null;
+              const oLoc = origin ? locations.find(l=>l.id===origin.locationId) : null;
 
               return <div key={job.id} style={{marginBottom:ji<v.jobs.length-1?10:0}}>
                 {/* Job header */}
@@ -350,23 +452,42 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
                 {/* Job stops */}
                 <div style={{padding:"8px 12px",border:`1px solid ${jt.color}15`,borderTop:"none",borderRadius:"0 0 8px 8px",background:"#12141a"}}>
-                  {job.driverDepart&&<div style={{fontSize:10,color:"#666",marginBottom:6}}>Driver departs: <span style={{fontWeight:700,color:"#ccc"}}>{fmtTime(job.driverDepart)}</span></div>}
-                  {pk.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #1e2028"}}>
-                    <span style={{width:18,height:18,borderRadius:"50%",background:jt.color+"18",color:jt.color,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
-                    <div style={{flex:1}}>
-                      <span style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}</span>
-                      <span style={{fontSize:10,color:"#666",marginLeft:6}}>{s.personType}</span>
-                      {s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}
-                      <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
-                    </div>
-                    {s.pickupTime&&<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.pickupTime)}</span>}
-                    <TrafficBadge note={s.trafficNote}/>
-                  </div>)}
-                  {dest&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
-                    <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✓</span>
-                    <span style={{flex:1,fontSize:12,fontWeight:600,color:"#22c55e"}}>ARRIVE — {dLoc?.name||dest.address}</span>
-                    <span style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>{fmtTime(dest.arrivalTime)}</span>
-                  </div>}
+                  {isReturnJob ? (<>
+                    {/* Return: Origin (set) → Drop-offs */}
+                    {origin&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1e2028"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:"#3b82f618",color:"#3b82f6",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>⬆</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,color:"#3b82f6"}}>DEPART — {oLoc?.name||origin.address}</span>
+                      {origin.departTime&&<span style={{fontSize:13,fontWeight:800,color:"#3b82f6"}}>{fmtTime(origin.departTime)}</span>}
+                    </div>}
+                    {dropoffs.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #1e2028"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:jt.color+"18",color:jt.color,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                      <div style={{flex:1}}>
+                        <span style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}</span>
+                        <span style={{fontSize:10,color:"#666",marginLeft:6}}>drop-off</span>
+                        <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
+                      </div>
+                      {s.dropoffTime&&<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.dropoffTime)}</span>}
+                    </div>)}
+                  </>) : (<>
+                    {/* Pickup: Stops → Destination */}
+                    {job.driverDepart&&<div style={{fontSize:10,color:"#666",marginBottom:6}}>Driver departs: <span style={{fontWeight:700,color:"#ccc"}}>{fmtTime(job.driverDepart)}</span></div>}
+                    {pk.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #1e2028"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:jt.color+"18",color:jt.color,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                      <div style={{flex:1}}>
+                        <span style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{gPN(s)}</span>
+                        <span style={{fontSize:10,color:"#666",marginLeft:6}}>{s.personType}</span>
+                        {s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}
+                        <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
+                      </div>
+                      {s.pickupTime&&<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.pickupTime)}</span>}
+                      <TrafficBadge note={s.trafficNote}/>
+                    </div>)}
+                    {dest&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✓</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,color:"#22c55e"}}>ARRIVE — {dLoc?.name||dest.address}</span>
+                      <span style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>{fmtTime(dest.arrivalTime)}</span>
+                    </div>}
+                  </>)}
                   {job.gmapsUrl&&<a href={job.gmapsUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,fontSize:10,color:"#3b82f6",textDecoration:"none"}}>Open in Google Maps <I.ExternalLink/></a>}
                 </div>
               </div>;
@@ -374,6 +495,93 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           </div>
         </div>;
       })}
+    </>}
+
+    {/* Dispatch Overview */}
+    {viewMode==="dispatch"&&<>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>{days.map(d=>{
+        const jCount = routes.filter(r=>r.dayId===d.id).length;
+        return<button key={d.id} onClick={()=>setSelDay(d.id)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:selDay===d.id?"#3b82f618":"transparent",border:`1px solid ${selDay===d.id?"#3b82f644":"#2a2d35"}`,color:selDay===d.id?"#3b82f6":"#888"}}>{d.label} · {fmtDate(d.date)} · {jCount} jobs</button>;
+      })}</div>
+
+      {(()=>{
+        // Build timeline: all jobs across all vehicles, sorted by time
+        const allJobs = dayJobs.map(j => {
+          const v = vehicles.find(x=>x.id===j.vehicleId);
+          const vt = VEHICLE_TYPES.find(t=>t.id===v?.type);
+          const drv = crew.find(c=>c.id===v?.driverId);
+          const jt = JOB_TYPES.find(t=>t.id===j.jobType) || JOB_TYPES[5];
+          const isRet = j.jobType === "wrap_return";
+          const pk = j.stops?.filter(s=>s.type==="pickup") || [];
+          const dropoffs = j.stops?.filter(s=>s.type==="dropoff") || [];
+          const dest = j.stops?.find(s=>s.type==="destination");
+          const origin = j.stops?.find(s=>s.type==="origin");
+          const dLoc = dest ? locations.find(l=>l.id===dest.locationId) : null;
+          const oLoc = origin ? locations.find(l=>l.id===origin.locationId) : null;
+          const time = isRet ? (origin?.departTime||"99:99") : (j.driverDepart || dest?.arrivalTime || "99:99");
+          const passengers = isRet ? dropoffs.length : pk.length;
+          return { ...j, v, vt, drv, jt, isRet, pk, dropoffs, dest, origin, dLoc, oLoc, time, passengers };
+        }).sort((a,b) => a.time.localeCompare(b.time));
+
+        // Stats
+        const totalPassengers = allJobs.reduce((s,j) => s + j.passengers, 0);
+        const totalDrive = allJobs.reduce((s,j) => s + (j.totalDrive||0), 0);
+        const dispatched = allJobs.filter(j=>j.status==="dispatched").length;
+        const calculated = allJobs.filter(j=>j.optimized).length;
+
+        return <>
+          {/* Summary cards */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:16}}>
+            {[
+              {label:"Total Jobs",val:allJobs.length,color:"#E8C94A"},
+              {label:"Passengers",val:totalPassengers,color:"#3b82f6"},
+              {label:"Vehicles Active",val:new Set(allJobs.map(j=>j.vehicleId)).size,color:"#22c55e"},
+              {label:"Est. Drive Time",val:totalDrive?`${totalDrive} min`:"—",color:"#f59e0b"},
+              {label:"Calculated",val:`${calculated}/${allJobs.length}`,color:calculated===allJobs.length?"#22c55e":"#888"},
+              {label:"Dispatched",val:`${dispatched}/${allJobs.length}`,color:dispatched===allJobs.length?"#22c55e":"#888"},
+            ].map(c=><div key={c.label} style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:8,padding:"10px 14px"}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.05em"}}>{c.label}</div>
+              <div style={{fontSize:20,fontWeight:800,color:c.color,marginTop:2}}>{c.val}</div>
+            </div>)}
+          </div>
+
+          {/* Timeline */}
+          <div style={{fontSize:10,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Timeline — {day?.label}</div>
+          {allJobs.length===0&&<div style={{textAlign:"center",padding:30,color:"#555",fontSize:13}}>No jobs scheduled for this day.</div>}
+          {allJobs.map(j=>(
+            <div key={j.id} style={{display:"flex",gap:12,marginBottom:2,padding:"10px 14px",background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:8,borderLeft:`4px solid ${j.jt.color}`}}>
+              {/* Time */}
+              <div style={{width:50,flexShrink:0,textAlign:"center"}}>
+                <div style={{fontSize:16,fontWeight:800,color:j.jt.color,fontFamily:"monospace"}}>{fmtTime(j.time)}</div>
+                <div style={{fontSize:8,color:"#666",marginTop:1}}>{j.isRet?"DEPART":"ARRIVE"}</div>
+              </div>
+              {/* Job info */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                  <span style={{fontSize:13}}>{j.jt.icon}</span>
+                  <span style={{fontWeight:700,color:"#f0f0f0",fontSize:13}}>{j.label}</span>
+                  <StatusBadge status={j.status||"draft"}/>
+                </div>
+                <div style={{fontSize:11,color:"#888"}}>
+                  {j.isRet
+                    ? <>From {j.oLoc?.name||j.origin?.address||"—"} → {j.dropoffs.map(s=>gPN(s)).join(", ")||"no drop-offs"}</>
+                    : <>{j.pk.map(s=>gPN(s)).join(", ")||"no pickups"} → {j.dLoc?.name||j.dest?.address||"—"}</>
+                  }
+                </div>
+              </div>
+              {/* Vehicle + driver */}
+              <div style={{flexShrink:0,textAlign:"right"}}>
+                <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"flex-end"}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:j.v?.color||"#555"}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:"#ccc"}}>{j.v?.label||"—"}</span>
+                </div>
+                <div style={{fontSize:10,color:"#666"}}>{j.drv?.name||"No driver"} · {j.passengers} pax</div>
+                {j.totalDrive&&<div style={{fontSize:9,color:"#555"}}>{j.totalDrive} min · {j.totalDistance?toKm(j.totalDistance)+" km":""}</div>}
+              </div>
+            </div>
+          ))}
+        </>;
+      })()}
     </>}
 
     {/* Fleet view */}
