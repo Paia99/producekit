@@ -123,6 +123,8 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   const [vf,setVf]=useState({});
   const [calc,setCalc]=useState(null);const [calcErr,setCalcErr]=useState("");
   const [dispPrev,setDispPrev]=useState(null);
+  const [driverSheetVeh,setDriverSheetVeh]=useState(null); // vehicle for driver sheet modal
+  const [calcAll,setCalcAll]=useState(null); // vehicleId being calc-all'd
   const [editTpl,setEditTpl]=useState(false);
   const [travellerTpl,setTravellerTpl]=useState(()=>{try{const s=localStorage.getItem("pk_tpl_traveller");if(s)return s;}catch(e){}return"Hi {name}, your pickup is at {time} from {address}. Set call: {callTime}. Be ready 5 min early.";});
   const [driverTpl,setDriverTpl]=useState(()=>{try{const s=localStorage.getItem("pk_tpl_driver");if(s)return s;}catch(e){}return"Route: {routeLabel}\nDepart: {departTime}\n{stopsList}\n> {callTime} ARRIVE {destination}\n\nMaps: {mapsUrl}";});
@@ -168,6 +170,54 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     const stopsList=pk.map(s=>`> ${fmtTime(s.pickupTime)} ${gPN(s)} — ${s.address}`).join("\n");
     const dMsg=drv?{to:drv.name+" (Driver)",msg:driverTpl.replace(/\{routeLabel\}/g,job.label).replace(/\{departTime\}/g,fmtTime(job.driverDepart||"?")).replace(/\{stopsList\}/g,stopsList).replace(/\{callTime\}/g,callTime).replace(/\{destination\}/g,dLoc?.name||dest?.address||"").replace(/\{mapsUrl\}/g,job.gmapsUrl||"N/A")}:null;
     setDispPrev({route:job,msgs,dMsg});
+  };
+
+  // Calculate all jobs for a vehicle sequentially
+  const calcAllJobs = async (v) => {
+    const jobs = dayJobs.filter(j => j.vehicleId === v.id);
+    const calcable = jobs.filter(j => (j.stops||[]).filter(s=>s.type==="pickup").length > 0);
+    if (calcable.length === 0) return;
+    setCalcAll(v.id); setCalcErr("");
+    for (const job of calcable) {
+      try {
+        setCalc(job.id);
+        const result = await callRouteOptimize(job, vehicles, crew, cast, day);
+        if (result.error) { setCalcErr(result.error); continue; }
+        setRoutes(prev => prev.map(r => {
+          if (r.id !== job.id) return r;
+          const ns = result.schedule.stops.map(s => { const o = r.stops.find(st => st.type === "pickup" && String(st.personId) === String(s.id)); return { type: "pickup", personType: s.personType || o?.personType || "crew", personId: s.id, address: s.address, pickupTime: s.pickup_time, estDrive: s.drive_to_next_minutes, distance: s.distance_to_next || "", trafficNote: s.traffic_note || "" }; });
+          const dest = r.stops.find(s => s.type === "destination"); ns.push({ ...dest, arrivalTime: result.schedule.arrival || dest.arrivalTime });
+          return { ...r, stops: ns, optimized: true, demo: !!result.demo, gmapsUrl: result.google_maps_url || "", totalDrive: result.total_drive_minutes, totalDistance: result.total_distance_miles, trafficSummary: result.traffic_summary || "", driverDepart: result.schedule.driver_depart };
+        }));
+      } catch (err) { setCalcErr(err.message); }
+    }
+    setCalc(null); setCalcAll(null);
+  };
+
+  // Dispatch all optimized jobs for a vehicle
+  const dispatchAllJobs = (v) => {
+    const jobs = dayJobs.filter(j => j.vehicleId === v.id && j.optimized);
+    if (jobs.length === 0) return;
+    const drv = crew.find(c => c.id === v.driverId);
+    const allMsgs = []; let driverMsgs = "";
+    jobs.forEach((job, ji) => {
+      const jt = JOB_TYPES.find(t => t.id === job.jobType) || JOB_TYPES[5];
+      const pk = job.stops.filter(s => s.type === "pickup");
+      const dest = job.stops.find(s => s.type === "destination");
+      const dLoc = locations.find(l => l.id === dest?.locationId);
+      const callTime = fmtTime(dest?.arrivalTime);
+      pk.forEach(s => {
+        const name = gPN(s);
+        allMsgs.push({ to: name, job: job.label, msg: travellerTpl.replace(/\{name\}/g, name).replace(/\{time\}/g, fmtTime(s.pickupTime)).replace(/\{address\}/g, s.address || "").replace(/\{callTime\}/g, callTime) });
+      });
+      const stopsList = pk.map(s => `> ${fmtTime(s.pickupTime)} ${gPN(s)} — ${s.address}`).join("\n");
+      driverMsgs += `${jt.icon} JOB ${ji+1}: ${job.label}\n`;
+      driverMsgs += `Depart: ${fmtTime(job.driverDepart || "?")}\n${stopsList}\n> ${callTime} ARRIVE ${dLoc?.name || dest?.address || ""}\n`;
+      if (job.gmapsUrl) driverMsgs += `Maps: ${job.gmapsUrl}\n`;
+      driverMsgs += "\n";
+    });
+    const dMsg = drv ? { to: drv.name + " (Driver)", msg: driverMsgs } : null;
+    setDispPrev({ route: jobs[0], msgs: allMsgs, dMsg, isAll: true, vehicleId: v.id });
   };
 
   const openNV=()=>{setVf({type:"van8",plate:"",label:"",driverId:null,color:"#3b82f6"});setEditVeh("new");};
@@ -262,7 +312,9 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
               <span style={{fontSize:10,color:"#666"}}>{v.jobs.length} jobs</span>
             </div>
             <div style={{display:"flex",gap:6}}>
-              {hasJobs&&<button onClick={()=>{navigator.clipboard.writeText(getDriverSheet(v));}} style={{...BS,padding:"5px 10px",fontSize:10}} title="Copy driver sheet">📋 Driver Sheet</button>}
+              {hasJobs&&<button onClick={()=>calcAllJobs(v)} disabled={calcAll===v.id} style={{...BS,padding:"5px 10px",fontSize:10}}>{calcAll===v.id?"⏳ Calculating...":"📍 Calculate All"}</button>}
+              {v.jobs.some(j=>j.optimized)&&<button onClick={()=>dispatchAllJobs(v)} style={{...BS,padding:"5px 10px",fontSize:10,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/> Dispatch All</button>}
+              {hasJobs&&<button onClick={()=>setDriverSheetVeh(v)} style={{...BS,padding:"5px 10px",fontSize:10}}>📋 Driver Sheet</button>}
               <button onClick={()=>setEditJob({vehicleId:v.id,job:"new"})} style={{...BS,padding:"5px 10px",fontSize:10,borderColor:"#22c55e44",color:"#22c55e"}}><I.Plus/> Job</button>
             </div>
           </div>
@@ -374,21 +426,47 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     </Modal>}
 
     {/* Dispatch Preview Modal */}
-    {dispPrev&&<Modal title="Dispatch Preview" onClose={()=>setDispPrev(null)} width={600}>
+    {dispPrev&&<Modal title={dispPrev.isAll?"Dispatch All Jobs":"Dispatch Preview"} onClose={()=>setDispPrev(null)} width={600}>
       <div style={{padding:10,background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,marginBottom:16,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> TEST MODE — Edit messages below. No messages will be sent.</div>
-      <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Traveller Messages</h4>
+      <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Traveller Messages ({dispPrev.msgs.length})</h4>
       {dispPrev.msgs.map((m,i)=><div key={i} style={{background:"#12141a",border:"1px solid #2a2d35",borderRadius:6,padding:12,marginBottom:8}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#E8C94A",marginBottom:4}}>To: {m.to}</div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontSize:11,fontWeight:700,color:"#E8C94A"}}>To: {m.to}</span>
+          {m.job&&<span style={{fontSize:9,color:"#666"}}>{m.job}</span>}
+        </div>
         <textarea value={m.msg} onChange={e=>{const nm=[...dispPrev.msgs];nm[i]={...nm[i],msg:e.target.value};setDispPrev({...dispPrev,msgs:nm});}} rows={3} style={{...IS,resize:"vertical",fontSize:12}}/>
       </div>)}
       {dispPrev.dMsg&&<><h4 style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#f0f0f0"}}>Driver Message</h4>
         <div style={{background:"#12141a",border:"1px solid #3b82f633",borderRadius:6,padding:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:4}}>To: {dispPrev.dMsg.to}</div>
-          <textarea value={dispPrev.dMsg.msg} onChange={e=>setDispPrev({...dispPrev,dMsg:{...dispPrev.dMsg,msg:e.target.value}})} rows={8} style={{...IS,resize:"vertical",fontSize:12,fontFamily:"monospace"}}/>
+          <textarea value={dispPrev.dMsg.msg} onChange={e=>setDispPrev({...dispPrev,dMsg:{...dispPrev.dMsg,msg:e.target.value}})} rows={dispPrev.isAll?12:8} style={{...IS,resize:"vertical",fontSize:12,fontFamily:"monospace"}}/>
         </div></>}
       <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:20}}>
-        <button onClick={()=>{setRoutes(p=>p.map(r=>r.id===dispPrev.route.id?{...r,status:"dispatched"}:r));setDispPrev(null);}} style={{...BP,background:"#3b82f6",color:"#fff"}}><I.Send/> Mark as Dispatched</button>
+        <button onClick={()=>{
+          if(dispPrev.isAll){
+            const vJobs=dayJobs.filter(j=>j.vehicleId===dispPrev.vehicleId&&j.optimized);
+            setRoutes(p=>p.map(r=>vJobs.some(j=>j.id===r.id)?{...r,status:"dispatched"}:r));
+          } else {
+            setRoutes(p=>p.map(r=>r.id===dispPrev.route.id?{...r,status:"dispatched"}:r));
+          }
+          setDispPrev(null);
+        }} style={{...BP,background:"#3b82f6",color:"#fff"}}><I.Send/> Mark as Dispatched</button>
         <button onClick={()=>setDispPrev(null)} style={BS}>Close</button>
+      </div>
+    </Modal>}
+
+    {/* Driver Sheet Modal */}
+    {driverSheetVeh&&<Modal title={`Driver Sheet — ${driverSheetVeh.label}`} onClose={()=>setDriverSheetVeh(null)} width={600}>
+      <pre style={{background:"#12141a",border:"1px solid #2a2d35",borderRadius:6,padding:16,fontSize:12,color:"#ccc",fontFamily:"monospace",whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:500,overflow:"auto"}}>{getDriverSheet(driverSheetVeh)}</pre>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+        <button onClick={()=>{navigator.clipboard.writeText(getDriverSheet(driverSheetVeh));}} style={{...BS,fontSize:11}}>📋 Copy to Clipboard</button>
+        <button onClick={()=>{
+          const txt=getDriverSheet(driverSheetVeh);
+          const w=window.open("","_blank","width=600,height=800");
+          w.document.write(`<html><head><title>Driver Sheet</title><style>body{font-family:monospace;font-size:13px;padding:20px;white-space:pre-wrap;line-height:1.7}@media print{body{font-size:12px;padding:10px}}</style></head><body>${txt.replace(/\n/g,"<br>")}</body></html>`);
+          w.document.close();w.print();
+        }} style={BP}>🖨 Print</button>
+        <button onClick={()=>setDriverSheetVeh(null)} style={BS}>Close</button>
       </div>
     </Modal>}
 
