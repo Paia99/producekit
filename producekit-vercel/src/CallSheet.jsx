@@ -710,11 +710,11 @@ Questions? Contact 1st AD.`;
             </div>
             <div style={{marginBottom:8}}>
               <div style={{fontSize:9,fontWeight:700,color:"#666",marginBottom:3}}>MUA + COSTUMES</div>
-              <HInput value={h.muaCostumeAddr||""} onChange={v=>setH({muaCostumeAddr:v})} placeholder="Makeup & costumes address..." w="100%" />
+              <AddressInput value={h.muaCostumeAddr||""} onChange={v=>setH({muaCostumeAddr:v})} placeholder="Makeup & costumes address..." style={{fontSize:10,padding:"4px 6px"}} />
             </div>
             <div>
               <div style={{fontSize:9,fontWeight:700,color:"#ef4444",marginBottom:3}}>🏥 HOSPITAL</div>
-              <HInput value={h.hospital||""} onChange={v=>setH({hospital:v})} placeholder="Nearest hospital..." w="100%" />
+              <AddressInput value={h.hospital||""} onChange={v=>setH({hospital:v})} placeholder="Nearest hospital..." style={{fontSize:10,padding:"4px 6px"}} />
             </div>
           </div>
 

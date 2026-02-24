@@ -109,16 +109,22 @@ function loadGoogleMaps(cb) {
 }
 export const AddressInput = ({ value, onChange, placeholder, style: extraStyle }) => {
   const inputRef = useRef(null); const acRef = useRef(null); const [ready,setReady] = useState(_mapsLoaded);
+  const [local, setLocal] = useState(value || "");
+  const latestOnChange = useRef(onChange);
+  latestOnChange.current = onChange;
+  useEffect(() => { setLocal(value || ""); }, [value]);
   useEffect(() => { if (!ready) loadGoogleMaps(() => setReady(true)); }, []);
   useEffect(() => {
     if (!ready || !inputRef.current || acRef.current) return;
     try { const ac = new window.google.maps.places.Autocomplete(inputRef.current, { types:["address"], fields:["formatted_address"] });
-      ac.addListener("place_changed", () => { const place = ac.getPlace(); if (place?.formatted_address) onChange(place.formatted_address); });
+      ac.addListener("place_changed", () => { const place = ac.getPlace(); if (place?.formatted_address) { setLocal(place.formatted_address); latestOnChange.current(place.formatted_address); } });
       acRef.current = ac;
     } catch (e) {}
     return () => { if (acRef.current) { window.google.maps.event.clearInstanceListeners(acRef.current); acRef.current = null; } };
   }, [ready]);
-  return <input ref={inputRef} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={placeholder||"Start typing address..."} style={{...IS,...extraStyle}} />;
+  return <input ref={inputRef} value={local} onChange={e=>setLocal(e.target.value)}
+    onBlur={()=>{ if (local !== (value||"")) onChange(local); }}
+    placeholder={placeholder||"Start typing address..."} style={{...IS,...extraStyle}} />;
 };
 
 // ─── API HELPER ──────────────────────────────────────────────
