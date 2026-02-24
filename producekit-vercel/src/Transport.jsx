@@ -20,12 +20,13 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
   );
 
   const isReturn = jobType === "wrap_return";
+  const isMove = jobType === "set_move" || jobType === "errand" || jobType === "custom";
 
   const addStop = () => {
+    if (isMove) return; // moves have fixed from→to, no extra stops
     const newId = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
     setStops(prev => {
       if (isReturn) {
-        // For returns: add drop-off stop after origin, before any existing drop-offs' end
         const ns = { _id: newId, type: "dropoff", personType: "cast", personId: "", address: "", dropoffTime: "", estDrive: 15, distance: "", trafficNote: "" };
         return [...prev, ns];
       }
@@ -54,29 +55,30 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
   const removeStop = (id) => setStops(prev => prev.filter(s => s._id !== id));
   const jt = JOB_TYPES.find(t => t.id === jobType) || JOB_TYPES[0];
 
-  // When switching job type, restructure stops
+  const getMode = (type) => {
+    if (type === "wrap_return") return "return";
+    if (type === "set_move" || type === "errand" || type === "custom") return "move";
+    return "pickup";
+  };
+
   const switchJobType = (newType) => {
-    const wasReturn = jobType === "wrap_return";
-    const willReturn = newType === "wrap_return";
+    const oldMode = getMode(jobType);
+    const newMode = getMode(newType);
     setJobType(newType);
     if (!label || JOB_TYPES.some(t => t.label === label)) setLabel(JOB_TYPES.find(t => t.id === newType)?.label || "");
-    if (wasReturn !== willReturn) {
-      // Restructure stops
-      if (willReturn) {
-        // Convert pickup→destination to origin→dropoffs
-        const dest = stops.find(s => s.type === "destination");
-        const pickups = stops.filter(s => s.type === "pickup");
-        const origin = { _id: "origin_" + Date.now(), type: "origin", locationId: dest?.locationId || "", address: dest?.address || "", departTime: dest?.arrivalTime || day?.wrapTime || "18:00" };
-        const dropoffs = pickups.map(s => ({ ...s, type: "dropoff", dropoffTime: s.pickupTime || "" }));
-        setStops([origin, ...dropoffs]);
-      } else {
-        // Convert origin→dropoffs back to pickup→destination
-        const origin = stops.find(s => s.type === "origin");
-        const dropoffs = stops.filter(s => s.type === "dropoff");
-        const dest = { _id: "dest_" + Date.now(), type: "destination", locationId: origin?.locationId || "", address: origin?.address || "", arrivalTime: origin?.departTime || day?.callTime || "06:00" };
-        const pickups = dropoffs.map(s => ({ ...s, type: "pickup", pickupTime: s.dropoffTime || "" }));
-        setStops([...pickups, dest]);
-      }
+    if (oldMode === newMode) return;
+
+    if (newMode === "move") {
+      setStops([
+        { _id: "from_" + Date.now(), type: "move_from", locationId: "", address: "", departTime: "" },
+        { _id: "to_" + Date.now(), type: "move_to", locationId: "", address: "", arrivalTime: "" },
+      ]);
+    } else if (newMode === "return") {
+      const origin = { _id: "origin_" + Date.now(), type: "origin", locationId: locations[0]?.id || "", address: locations[0]?.address || "", departTime: day?.wrapTime || "18:00" };
+      setStops([origin]);
+    } else {
+      const dest = { _id: "dest_" + Date.now(), type: "destination", locationId: locations[0]?.id || "", address: locations[0]?.address || "", arrivalTime: day?.callTime || "06:00" };
+      setStops([dest]);
     }
   };
 
@@ -98,7 +100,6 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
       /* ── RETURN/WRAP: Origin (location) → Drop-off stops ── */
       <div style={{marginBottom:12}}>
         <label style={LS}>Route</label>
-        {/* Origin = shoot location */}
         {stops.filter(s=>s.type==="origin").map(s=>(
           <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:8,background:"#3b82f608",borderRadius:6,border:"1px solid #3b82f622"}}>
             <span style={{fontSize:11,fontWeight:700,color:"#3b82f6",width:70,flexShrink:0}}>PICKUP</span>
@@ -108,7 +109,6 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             <input value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} placeholder="18:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}} title="Depart time (HH:MM)"/>
           </div>
         ))}
-        {/* Drop-off stops = people going home */}
         {stops.filter(s=>s.type==="dropoff").map((s,i)=>(
           <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
             <span style={{width:22,height:22,borderRadius:"50%",background:"#a855f718",color:"#a855f7",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
@@ -124,6 +124,39 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
           </div>
         ))}
         <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Drop-off</button>
+      </div>
+    ) : isMove ? (
+      /* ── SET MOVE / ERRAND: From → To (addresses only) ── */
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Route</label>
+        {stops.filter(s=>s.type==="move_from").map(s=>(
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:8,background:"#3b82f608",borderRadius:6,border:"1px solid #3b82f622"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#3b82f6",width:50,flexShrink:0}}>FROM</span>
+            <button onClick={()=>updateStop(s._id,"manualAddr",!s.manualAddr)} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
+            {!s.manualAddr ? (
+              <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
+                <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            ) : (
+              <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="From address..." style={{flex:1}}/>
+            )}
+            <input value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} placeholder="10:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}}/>
+          </div>
+        ))}
+        {stops.filter(s=>s.type==="move_to").map(s=>(
+          <div key={s._id} style={{display:"flex",gap:8,alignItems:"center",padding:8,background:"#22c55e08",borderRadius:6,border:"1px solid #22c55e22"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#22c55e",width:50,flexShrink:0}}>TO</span>
+            <button onClick={()=>updateStop(s._id,"manualAddr",!s.manualAddr)} style={{...BS,padding:"4px 8px",fontSize:10,flexShrink:0}}>{s.manualAddr?"📍 Location":"✏️ Manual"}</button>
+            {!s.manualAddr ? (
+              <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
+                <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            ) : (
+              <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="To address..." style={{flex:1}}/>
+            )}
+            <input value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} placeholder="10:30" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}}/>
+          </div>
+        ))}
       </div>
     ) : (
       /* ── PICKUP: Pickup stops → Destination ── */
@@ -424,12 +457,17 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             {v.jobs.map((job,ji) => {
               const jt = JOB_TYPES.find(t=>t.id===job.jobType) || JOB_TYPES[5];
               const isReturnJob = job.jobType === "wrap_return";
+              const isMoveJob = job.jobType === "set_move" || job.jobType === "errand" || job.jobType === "custom";
               const pk = job.stops?.filter(s=>s.type==="pickup") || [];
               const dropoffs = job.stops?.filter(s=>s.type==="dropoff") || [];
               const origin = job.stops?.find(s=>s.type==="origin");
               const dest = job.stops?.find(s=>s.type==="destination");
+              const moveFrom = job.stops?.find(s=>s.type==="move_from");
+              const moveTo = job.stops?.find(s=>s.type==="move_to");
               const dLoc = dest ? locations.find(l=>l.id===dest.locationId) : null;
               const oLoc = origin ? locations.find(l=>l.id===origin.locationId) : null;
+              const fLoc = moveFrom ? locations.find(l=>l.id===moveFrom.locationId) : null;
+              const tLoc = moveTo ? locations.find(l=>l.id===moveTo.locationId) : null;
 
               return <div key={job.id} style={{marginBottom:ji<v.jobs.length-1?10:0}}>
                 {/* Job header */}
@@ -443,8 +481,8 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                     {job.totalDistance&&<span style={{fontSize:10,color:"#888"}}>{toKm(job.totalDistance)} km</span>}
                   </div>
                   <div style={{display:"flex",gap:4}}>
-                    <button onClick={()=>calcRoute(job)} disabled={calc===job.id} style={{...BS,padding:"4px 8px",fontSize:10}}>{calc===job.id?"⏳":"📍"} Calc</button>
-                    {job.optimized&&<button onClick={()=>showDispatch(job)} style={{...BS,padding:"4px 8px",fontSize:10,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/></button>}
+                    {!isMoveJob&&<button onClick={()=>calcRoute(job)} disabled={calc===job.id} style={{...BS,padding:"4px 8px",fontSize:10}}>{calc===job.id?"⏳":"📍"} Calc</button>}
+                    {job.optimized&&!isMoveJob&&<button onClick={()=>showDispatch(job)} style={{...BS,padding:"4px 8px",fontSize:10,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/></button>}
                     <button onClick={()=>setEditJob({vehicleId:v.id,job})} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Edit/></button>
                     <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==job.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
                   </div>
@@ -452,7 +490,20 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
                 {/* Job stops */}
                 <div style={{padding:"8px 12px",border:`1px solid ${jt.color}15`,borderTop:"none",borderRadius:"0 0 8px 8px",background:"#12141a"}}>
-                  {isReturnJob ? (<>
+                  {isMoveJob ? (<>
+                    {/* Move: From → To */}
+                    {moveFrom&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1e2028"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:"#3b82f618",color:"#3b82f6",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>A</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,color:"#3b82f6"}}>FROM — {fLoc?.name||moveFrom.address||"—"}</span>
+                      {moveFrom.departTime&&<span style={{fontSize:13,fontWeight:800,color:"#3b82f6",fontFamily:"monospace"}}>{fmtTime(moveFrom.departTime)}</span>}
+                    </div>}
+                    {moveTo&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>B</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,color:"#22c55e"}}>TO — {tLoc?.name||moveTo.address||"—"}</span>
+                      {moveTo.arrivalTime&&<span style={{fontSize:13,fontWeight:800,color:"#22c55e",fontFamily:"monospace"}}>{fmtTime(moveTo.arrivalTime)}</span>}
+                    </div>}
+                    {job.notes&&<div style={{fontSize:10,color:"#888",marginTop:4,fontStyle:"italic"}}>{job.notes}</div>}
+                  </>) : isReturnJob ? (<>
                     {/* Return: Origin (set) → Drop-offs */}
                     {origin&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1e2028"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:"#3b82f618",color:"#3b82f6",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>⬆</span>
@@ -512,15 +563,20 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
           const drv = crew.find(c=>c.id===v?.driverId);
           const jt = JOB_TYPES.find(t=>t.id===j.jobType) || JOB_TYPES[5];
           const isRet = j.jobType === "wrap_return";
+          const isMov = j.jobType === "set_move" || j.jobType === "errand" || j.jobType === "custom";
           const pk = j.stops?.filter(s=>s.type==="pickup") || [];
           const dropoffs = j.stops?.filter(s=>s.type==="dropoff") || [];
           const dest = j.stops?.find(s=>s.type==="destination");
           const origin = j.stops?.find(s=>s.type==="origin");
+          const moveFrom = j.stops?.find(s=>s.type==="move_from");
+          const moveTo = j.stops?.find(s=>s.type==="move_to");
           const dLoc = dest ? locations.find(l=>l.id===dest.locationId) : null;
           const oLoc = origin ? locations.find(l=>l.id===origin.locationId) : null;
-          const time = isRet ? (origin?.departTime||"99:99") : (j.driverDepart || dest?.arrivalTime || "99:99");
+          const fLoc = moveFrom ? locations.find(l=>l.id===moveFrom?.locationId) : null;
+          const tLoc = moveTo ? locations.find(l=>l.id===moveTo?.locationId) : null;
+          const time = isMov ? (moveFrom?.departTime||moveTo?.arrivalTime||"99:99") : isRet ? (origin?.departTime||"99:99") : (j.driverDepart || dest?.arrivalTime || "99:99");
           const passengers = isRet ? dropoffs.length : pk.length;
-          return { ...j, v, vt, drv, jt, isRet, pk, dropoffs, dest, origin, dLoc, oLoc, time, passengers };
+          return { ...j, v, vt, drv, jt, isRet, isMov, pk, dropoffs, dest, origin, moveFrom, moveTo, dLoc, oLoc, fLoc, tLoc, time, passengers };
         }).sort((a,b) => a.time.localeCompare(b.time));
 
         // Stats
@@ -635,7 +691,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
               {/* Time */}
               <div style={{width:50,flexShrink:0,textAlign:"center"}}>
                 <div style={{fontSize:16,fontWeight:800,color:j.jt.color,fontFamily:"monospace"}}>{fmtTime(j.time)}</div>
-                <div style={{fontSize:8,color:"#666",marginTop:1}}>{j.isRet?"DEPART":"ARRIVE"}</div>
+                <div style={{fontSize:8,color:"#666",marginTop:1}}>{j.isMov?"DEPART":j.isRet?"DEPART":"ARRIVE"}</div>
               </div>
               {/* Job info */}
               <div style={{flex:1,minWidth:0}}>
@@ -645,7 +701,9 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                   <StatusBadge status={j.status||"draft"}/>
                 </div>
                 <div style={{fontSize:11,color:"#888"}}>
-                  {j.isRet
+                  {j.isMov
+                    ? <>{j.fLoc?.name||j.moveFrom?.address||"—"} → {j.tLoc?.name||j.moveTo?.address||"—"}</>
+                    : j.isRet
                     ? <>From {j.oLoc?.name||j.origin?.address||"—"} → {j.dropoffs.map(s=>gPN(s)).join(", ")||"no drop-offs"}</>
                     : <>{j.pk.map(s=>gPN(s)).join(", ")||"no pickups"} → {j.dLoc?.name||j.dest?.address||"—"}</>
                   }
@@ -689,7 +747,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     {/* Job Edit Modal */}
     {editJob&&<Modal title={editJob.job==="new"?"Add Job":"Edit Job"} onClose={()=>setEditJob(null)} width={640}>
       <JobForm
-        key={editJob.job==="new"?"new_"+Date.now():editJob.job.id}
+        key={editJob.job==="new"?"new_job":editJob.job.id}
         initial={editJob.job==="new" ? {
           label:"AM Pickup", jobType:"am_pickup",
           stops:[{type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0}],
