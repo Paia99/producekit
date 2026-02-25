@@ -258,6 +258,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
 const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strips, crew, cast, locations }) => {
   const [selDay,setSelDay]=useState(days[0]?.id||"");
   const [viewMode,setViewMode]=useState("plan"); // plan | fleet | drivers
+  const [showShuttle,setShowShuttle]=useState(false);
   const [editJob,setEditJob]=useState(null); // null | {vehicleId, job:"new"|jobObj}
   const [editVeh,setEditVeh]=useState(null);
   const [vf,setVf]=useState({});
@@ -330,6 +331,29 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
   const showDispatch=(job)=>{
     const v=vehicles.find(x=>x.id===job.vehicleId);const drv=crew.find(c=>c.id===v?.driverId);
+    const isReturnJob = job.jobType === "wrap_return";
+
+    if (isReturnJob) {
+      const origin = job.stops.find(s=>s.type==="origin");
+      const oLoc = locations.find(l=>l.id===origin?.locationId);
+      const dropoffs = job.stops.filter(s=>s.type==="dropoff");
+      const departTime = fmtTime(origin?.departTime);
+      const locName = oLoc?.name || origin?.address || "set";
+      const driverName = drv?.name || "your driver";
+      const vehicleLabel = v?.label || "transport";
+      // One message to all travellers
+      const msgs = dropoffs.map(s => {
+        const name = gPN(s);
+        return { to: name, msg: `Hi ${name}, wrap transport departs at ${departTime} from ${locName}. Vehicle: ${vehicleLabel}, Driver: ${driverName}. Please be ready at the vehicle.` };
+      });
+      // Driver message
+      const stopsList = dropoffs.map((s,i) => `${i+1}. ${gPN(s)} → ${s.address}`).join("\n");
+      const dMsg = drv ? { to: drv.name + " (Driver)", msg: `🌙 WRAP RETURN: ${job.label}\nDepart: ${departTime} from ${locName}\n\n${stopsList}\n\nMaps: ${job.gmapsUrl || "N/A"}` } : null;
+      setDispPrev({ route: job, msgs, dMsg });
+      return;
+    }
+
+    // Pickup mode
     const pk=job.stops.filter(s=>s.type==="pickup");const dest=job.stops.find(s=>s.type==="destination");const dLoc=locations.find(l=>l.id===dest?.locationId);
     const callTime=fmtTime(dest?.arrivalTime);
     const msgs=pk.map(s=>{const name=gPN(s);return{to:name,msg:travellerTpl.replace(/\{name\}/g,name).replace(/\{time\}/g,fmtTime(s.pickupTime)).replace(/\{address\}/g,s.address||"").replace(/\{callTime\}/g,callTime)};});
@@ -471,6 +495,92 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
       {calcErr&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> {calcErr}</div>}
 
+      {/* Shuttle Planner — who needs transport */}
+      <div style={{marginBottom:12}}>
+        <button onClick={()=>setShowShuttle(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
+          <span style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:14}}>🗓</span>
+            <span style={{fontWeight:700,fontSize:13}}>Shuttle Planner</span>
+            {(()=>{
+              const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
+              const castIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
+              const plannedIds = new Set();
+              dayJobs.forEach(j=>{(j.stops||[]).forEach(s=>{if(s.personId)plannedIds.add(String(s.personId));});});
+              const unplanned = castIds.filter(id=>!plannedIds.has(String(id))).length;
+              const crewUnplanned = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver"&&!plannedIds.has(String(c.id))).length;
+              const total = unplanned+crewUnplanned;
+              return total>0?<span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:10}}>{total} need transport</span>:<span style={{fontSize:10,fontWeight:700,color:"#22c55e"}}>All covered ✓</span>;
+            })()}
+          </span>
+          <span style={{fontSize:10,color:"#666"}}>{showShuttle?"▲ Hide":"▼ Show"}</span>
+        </button>
+        {showShuttle&&(()=>{
+          const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
+          const dayCastIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
+          const dayCast = dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);
+          const dayCrew = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver");
+          const plannedIds = new Set();
+          const personJobMap = {};
+          dayJobs.forEach(j=>{
+            const v=vehicles.find(x=>x.id===j.vehicleId);
+            (j.stops||[]).forEach(s=>{
+              if(s.personId){plannedIds.add(String(s.personId));personJobMap[String(s.personId)]={job:j,vehicle:v,stop:s};}
+            });
+          });
+          return <div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr style={{borderBottom:"1px solid #1e2028"}}>
+                {["","Name","Role","Call","Costume","Status","Vehicle",""].map(h=><th key={h} style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left"}}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {dayCast.map(c=>{
+                  const planned = plannedIds.has(String(c.id));
+                  const pj = personJobMap[String(c.id)];
+                  const cs = day?.callSheet?.cast?.[String(c.id)];
+                  return <tr key={c.id} style={{borderBottom:"1px solid #1a1d23",background:planned?"transparent":"#ef444406"}}>
+                    <td style={{padding:"4px 8px"}}><span style={{width:6,height:6,borderRadius:"50%",display:"inline-block",background:planned?"#22c55e":"#ef4444"}}/></td>
+                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:600,color:"#f0f0f0"}}><span style={{color:"#E8C94A",fontWeight:800,marginRight:4}}>#{c.roleNum}</span>{c.name}</td>
+                    <td style={{padding:"4px 8px",fontSize:10,color:"#888"}}>{c.roleName||""}</td>
+                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:700,color:"#22c55e",fontFamily:"monospace"}}>{cs?.onSet||cs?.costume||"—"}</td>
+                    <td style={{padding:"4px 8px",fontSize:10,color:"#f59e0b",fontFamily:"monospace"}}>{cs?.costume||"—"}</td>
+                    <td style={{padding:"4px 8px"}}>{planned
+                      ?<span style={{fontSize:9,color:pj?.vehicle?.color||"#22c55e",background:(pj?.vehicle?.color||"#22c55e")+"18",padding:"2px 6px",borderRadius:3,fontWeight:700}}>{pj?.vehicle?.label||"assigned"}</span>
+                      :<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>MISSING</span>}
+                    </td>
+                    <td style={{padding:"4px 8px",fontSize:10,color:"#666"}}>{pj?.vehicle?.label||""}</td>
+                    <td style={{padding:"4px 8px"}}>{!planned&&vehicles.length>0&&<select onChange={e=>{if(!e.target.value)return;setEditJob({vehicleId:e.target.value,job:"new"});}} value="" style={{...IS,width:100,fontSize:10,padding:"3px 6px"}}>
+                      <option value="">+ Add to...</option>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>}</td>
+                  </tr>;
+                })}
+                {dayCrew.length>0&&<tr><td colSpan={8} style={{padding:"8px 8px 4px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",borderBottom:"1px solid #1e2028"}}>Crew</td></tr>}
+                {dayCrew.map(c=>{
+                  const planned = plannedIds.has(String(c.id));
+                  const pj = personJobMap[String(c.id)];
+                  return <tr key={c.id} style={{borderBottom:"1px solid #1a1d23",background:planned?"transparent":"#ef444406"}}>
+                    <td style={{padding:"4px 8px"}}><span style={{width:6,height:6,borderRadius:"50%",display:"inline-block",background:planned?"#22c55e":"#ef4444"}}/></td>
+                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:600,color:"#ccc"}}>{c.name}</td>
+                    <td style={{padding:"4px 8px",fontSize:10,color:"#888"}}>{c.dept} — {c.role}</td>
+                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:700,color:"#888",fontFamily:"monospace"}}>{day?.callTime||"—"}</td>
+                    <td style={{padding:"4px 8px"}}>—</td>
+                    <td style={{padding:"4px 8px"}}>{planned
+                      ?<span style={{fontSize:9,color:pj?.vehicle?.color||"#22c55e",background:(pj?.vehicle?.color||"#22c55e")+"18",padding:"2px 6px",borderRadius:3,fontWeight:700}}>{pj?.vehicle?.label||"assigned"}</span>
+                      :<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>MISSING</span>}
+                    </td>
+                    <td style={{padding:"4px 8px",fontSize:10,color:"#666"}}>{pj?.vehicle?.label||""}</td>
+                    <td style={{padding:"4px 8px"}}>{!planned&&vehicles.length>0&&<select onChange={e=>{if(!e.target.value)return;setEditJob({vehicleId:e.target.value,job:"new"});}} value="" style={{...IS,width:100,fontSize:10,padding:"3px 6px"}}>
+                      <option value="">+ Add to...</option>
+                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>;
+        })()}
+      </div>
+
       {/* Vehicle Day Plans */}
       {vehicles.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>🚐</div><div style={{fontSize:14,marginBottom:8}}>No vehicles. Add vehicles in Fleet tab.</div></div>}
 
@@ -528,7 +638,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                   </div>
                   <div style={{display:"flex",gap:4}}>
                     {!isMoveJob&&<button onClick={()=>calcRoute(job)} disabled={calc===job.id} style={{...BS,padding:"4px 8px",fontSize:10}}>{calc===job.id?"⏳":"📍"} Calc</button>}
-                    {job.optimized&&!isMoveJob&&<button onClick={()=>showDispatch(job)} style={{...BS,padding:"4px 8px",fontSize:10,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/></button>}
+                    {!isMoveJob&&(job.optimized||isReturnJob)&&<button onClick={()=>showDispatch(job)} style={{...BS,padding:"4px 8px",fontSize:10,borderColor:"#3b82f633",color:"#3b82f6"}}><I.Send/></button>}
                     <button onClick={()=>setEditJob({vehicleId:v.id,job})} style={{...BS,padding:"4px 8px",fontSize:10}}><I.Edit/></button>
                     <button onClick={()=>setRoutes(p=>p.filter(r=>r.id!==job.id))} style={{background:"none",border:"none",color:"#555",cursor:"pointer",padding:2}}><I.Trash/></button>
                   </div>
@@ -553,7 +663,10 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                     {/* Return: Origin (set) → Drop-offs */}
                     {origin&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1e2028"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:"#3b82f618",color:"#3b82f6",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>⬆</span>
-                      <span style={{flex:1,fontSize:12,fontWeight:600,color:"#3b82f6"}}>DEPART — {oLoc?.name||origin.address}</span>
+                      <div style={{flex:1}}>
+                        <span style={{fontSize:12,fontWeight:600,color:"#3b82f6"}}>DEPART — {oLoc?.name||origin.address}</span>
+                        {oLoc?.name&&origin.address&&<div style={{fontSize:10,color:"#666"}}>{origin.address}</div>}
+                      </div>
                       {origin.departTime&&<span style={{fontSize:13,fontWeight:800,color:"#3b82f6"}}>{fmtTime(origin.departTime)}</span>}
                     </div>}
                     {dropoffs.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #1e2028"}}>
@@ -576,7 +689,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                         {s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}
                         <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
                       </div>
-                      <span style={{fontSize:s.pickupTime?13:9,fontWeight:s.pickupTime?800:600,color:s.pickupTime?jt.color:"#555",flexShrink:0,fontFamily:"monospace"}}>{s.pickupTime?fmtTime(s.pickupTime):"? : ?"}</span>
+                      {s.pickupTime?<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0,fontFamily:"monospace"}}>{fmtTime(s.pickupTime)}</span>:<span style={{fontSize:9,color:"#555",flexShrink:0}}>calc →</span>}
                       <TrafficBadge note={s.trafficNote}/>
                     </div>)}
                     {dest&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
