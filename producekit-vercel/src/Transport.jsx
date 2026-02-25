@@ -13,9 +13,9 @@ const JOB_TYPES = [
 /* ── TimeInput — local state, syncs on blur/Enter (prevents re-render wipe) ── */
 const TimeInput = ({ value, onChange, placeholder, style }) => {
   const [local, setLocal] = useState(value || "");
-  const ref = React.useRef(onChange);
+  const ref = useRef(onChange);
   ref.current = onChange;
-  React.useEffect(() => { setLocal(value || ""); }, [value]);
+  useEffect(() => { setLocal(value || ""); }, [value]);
   const commit = () => { if (local !== (value||"")) ref.current(local); };
   return <input
     value={local}
