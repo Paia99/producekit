@@ -10,6 +10,23 @@ const JOB_TYPES = [
   { id:"custom", label:"Custom", icon:"🚐", color:"#888" },
 ];
 
+/* ── TimeInput — local state, syncs on blur/Enter (prevents re-render wipe) ── */
+const TimeInput = ({ value, onChange, placeholder, style }) => {
+  const [local, setLocal] = useState(value || "");
+  const ref = React.useRef(onChange);
+  ref.current = onChange;
+  React.useEffect(() => { setLocal(value || ""); }, [value]);
+  const commit = () => { if (local !== (value||"")) ref.current(local); };
+  return <input
+    value={local}
+    onChange={e => setLocal(e.target.value)}
+    onBlur={commit}
+    onKeyDown={e => { if (e.key === "Enter") { commit(); e.target.blur(); } }}
+    placeholder={placeholder || "HH:MM"}
+    style={{ ...IS, width: 80, fontFamily: "monospace", textAlign: "center", ...style }}
+  />;
+};
+
 /* ── Job Form — self-contained, reused for create/edit ── */
 const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete, onCancel, isNew }) => {
   const [label, setLabel] = useState(initial.label || "");
@@ -106,7 +123,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
               <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
-            <input value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} placeholder="18:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}} title="Depart time (HH:MM)"/>
+            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="18:00"/>
           </div>
         ))}
         {stops.filter(s=>s.type==="dropoff").map((s,i)=>(
@@ -140,7 +157,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="From address..." style={{flex:1}}/>
             )}
-            <input value={s.departTime||""} onChange={e=>updateStop(s._id,"departTime",e.target.value)} placeholder="10:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}}/>
+            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="10:00"/>
           </div>
         ))}
         {stops.filter(s=>s.type==="move_to").map(s=>(
@@ -154,7 +171,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="To address..." style={{flex:1}}/>
             )}
-            <input value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} placeholder="10:30" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}}/>
+            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="10:30"/>
           </div>
         ))}
       </div>
@@ -185,7 +202,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
             )}
-            <input value={s.arrivalTime||""} onChange={e=>updateStop(s._id,"arrivalTime",e.target.value)} placeholder="06:00" style={{...IS,width:80,fontFamily:"monospace",textAlign:"center"}} title="Arrival time (HH:MM)"/>
+            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="06:00"/>
           </div>
         ) : null)}
         <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
@@ -238,45 +255,51 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
   // Routes are now "jobs" — grouped by vehicleId + dayId
   const dayJobs = routes.filter(r => r.dayId === selDay);
+  const getJobTime = (j) => {
+    const isRet = j.jobType === "wrap_return";
+    const isMov = j.jobType === "set_move" || j.jobType === "errand" || j.jobType === "custom";
+    if (isMov) return j.stops?.find(s=>s.type==="move_from")?.departTime || j.stops?.find(s=>s.type==="move_to")?.arrivalTime || "99:99";
+    if (isRet) return j.stops?.find(s=>s.type==="origin")?.departTime || "99:99";
+    return j.driverDepart || j.stops?.find(s=>s.type==="destination")?.arrivalTime || "99:99";
+  };
   const vehiclesWithJobs = vehicles.map(v => {
-    const jobs = dayJobs.filter(j => j.vehicleId === v.id).sort((a,b) => {
-      const aTime = a.stops?.find(s=>s.type==="destination")?.arrivalTime || "99:99";
-      const bTime = b.stops?.find(s=>s.type==="destination")?.arrivalTime || "99:99";
-      return aTime.localeCompare(bTime);
-    });
+    const jobs = dayJobs.filter(j => j.vehicleId === v.id).sort((a,b) => getJobTime(a).localeCompare(getJobTime(b)));
     return { ...v, jobs };
   });
 
   const calcRoute = async (job) => {
     const isReturnJob = job.jobType === "wrap_return";
-    const stops = isReturnJob ? job.stops.filter(s=>s.type==="dropoff") : job.stops.filter(s=>s.type==="pickup");
-    if(stops.length===0)return;
+    if (isReturnJob) {
+      const dropoffs = job.stops.filter(s=>s.type==="dropoff");
+      const origin = job.stops.find(s=>s.type==="origin");
+      if(dropoffs.length===0)return;
+      setCalc(job.id);setCalcErr("");
+      try{
+        const result = await callRouteOptimize(job, vehicles, crew, cast, day, { mode: "return", origin, dropoffs });
+        if(result.error){setCalcErr(result.error);setCalc(null);return;}
+        setRoutes(prev=>prev.map(r=>{
+          if(r.id!==job.id)return r;
+          const orig = r.stops.find(s=>s.type==="origin");
+          const updatedDropoffs = result.schedule.stops.map(s=>{
+            const o=r.stops.find(st=>st.type==="dropoff"&&String(st.personId)===String(s.id));
+            return{type:"dropoff",personType:s.personType||o?.personType||"cast",personId:s.id,address:s.address,dropoffTime:s.dropoff_time,estDrive:s.drive_to_next_minutes,distance:s.distance_to_next||"",trafficNote:s.traffic_note||"",_id:o?._id||("d_"+Date.now()+"_"+Math.random().toString(36).slice(2,5))};
+          });
+          return{...r,stops:[{...orig},...updatedDropoffs],optimized:true,demo:!!result.demo,gmapsUrl:result.google_maps_url||"",totalDrive:result.total_drive_minutes,totalDistance:result.total_distance_miles,trafficSummary:result.traffic_summary||"",driverDepart:orig.departTime};
+        }));
+        setCalc(null);
+      }catch(err){setCalcErr(err.message);setCalc(null);}
+      return;
+    }
+    // Pickup mode
+    const pk=job.stops.filter(s=>s.type==="pickup");if(pk.length===0)return;
     setCalc(job.id);setCalcErr("");
     try{
-      // For return jobs, convert to pickup-like structure for the API
-      let apiJob = job;
-      if (isReturnJob) {
-        const origin = job.stops.find(s=>s.type==="origin");
-        const fakePickups = job.stops.filter(s=>s.type==="dropoff").map(s=>({...s, type:"pickup", pickupTime:s.dropoffTime||""}));
-        const lastDropoff = fakePickups[fakePickups.length-1];
-        const fakeDest = { type:"destination", address:lastDropoff?.address||"", arrivalTime:"", locationId:"", estDrive:0 };
-        apiJob = {...job, stops:[...fakePickups, fakeDest], _originAddress: origin?.address||""};
-      }
-      const result=await callRouteOptimize(apiJob,vehicles,crew,cast,day);
+      const result=await callRouteOptimize(job,vehicles,crew,cast,day);
       if(result.error){setCalcErr(result.error);setCalc(null);return;}
       setRoutes(prev=>prev.map(r=>{
         if(r.id!==job.id)return r;
-        if (isReturnJob) {
-          // Map results back to dropoff structure
-          const origin = r.stops.find(s=>s.type==="origin");
-          const updatedDropoffs = result.schedule.stops.map(s=>{
-            const o=r.stops.find(st=>st.type==="dropoff"&&String(st.personId)===String(s.id));
-            return{type:"dropoff",personType:s.personType||o?.personType||"cast",personId:s.id,address:s.address,dropoffTime:s.pickup_time,estDrive:s.drive_to_next_minutes,distance:s.distance_to_next||"",trafficNote:s.traffic_note||"",_id:o?._id||("d_"+Date.now()+"_"+Math.random().toString(36).slice(2,5))};
-          });
-          return{...r,stops:[{...origin, departTime:result.schedule.driver_depart||origin.departTime},...updatedDropoffs],optimized:true,demo:!!result.demo,gmapsUrl:result.google_maps_url||"",totalDrive:result.total_drive_minutes,totalDistance:result.total_distance_miles,trafficSummary:result.traffic_summary||"",driverDepart:result.schedule.driver_depart};
-        }
         const ns=result.schedule.stops.map(s=>{const o=r.stops.find(st=>st.type==="pickup"&&String(st.personId)===String(s.id));return{type:"pickup",personType:s.personType||o?.personType||"crew",personId:s.id,address:s.address,pickupTime:s.pickup_time,estDrive:s.drive_to_next_minutes,distance:s.distance_to_next||"",trafficNote:s.traffic_note||""};});
-        const dest=r.stops.find(s=>s.type==="destination");ns.push({...dest,arrivalTime:result.schedule.arrival||dest.arrivalTime});
+        const dest=r.stops.find(s=>s.type==="destination");ns.push({...dest});
         return{...r,stops:ns,optimized:true,demo:!!result.demo,gmapsUrl:result.google_maps_url||"",totalDrive:result.total_drive_minutes,totalDistance:result.total_distance_miles,trafficSummary:result.traffic_summary||"",driverDepart:result.schedule.driver_depart};
       }));
       setCalc(null);
@@ -296,20 +319,18 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
   // Calculate all jobs for a vehicle sequentially
   const calcAllJobs = async (v) => {
     const jobs = dayJobs.filter(j => j.vehicleId === v.id);
-    const calcable = jobs.filter(j => (j.stops||[]).filter(s=>s.type==="pickup").length > 0);
+    const calcable = jobs.filter(j => {
+      const isRet = j.jobType === "wrap_return";
+      const isMov = j.jobType === "set_move" || j.jobType === "errand" || j.jobType === "custom";
+      if (isMov) return false;
+      const ppl = isRet ? (j.stops||[]).filter(s=>s.type==="dropoff") : (j.stops||[]).filter(s=>s.type==="pickup");
+      return ppl.length > 0;
+    });
     if (calcable.length === 0) return;
     setCalcAll(v.id); setCalcErr("");
     for (const job of calcable) {
       try {
-        setCalc(job.id);
-        const result = await callRouteOptimize(job, vehicles, crew, cast, day);
-        if (result.error) { setCalcErr(result.error); continue; }
-        setRoutes(prev => prev.map(r => {
-          if (r.id !== job.id) return r;
-          const ns = result.schedule.stops.map(s => { const o = r.stops.find(st => st.type === "pickup" && String(st.personId) === String(s.id)); return { type: "pickup", personType: s.personType || o?.personType || "crew", personId: s.id, address: s.address, pickupTime: s.pickup_time, estDrive: s.drive_to_next_minutes, distance: s.distance_to_next || "", trafficNote: s.traffic_note || "" }; });
-          const dest = r.stops.find(s => s.type === "destination"); ns.push({ ...dest, arrivalTime: result.schedule.arrival || dest.arrivalTime });
-          return { ...r, stops: ns, optimized: true, demo: !!result.demo, gmapsUrl: result.google_maps_url || "", totalDrive: result.total_drive_minutes, totalDistance: result.total_distance_miles, trafficSummary: result.traffic_summary || "", driverDepart: result.schedule.driver_depart };
-        }));
+        await calcRoute(job);
       } catch (err) { setCalcErr(err.message); }
     }
     setCalc(null); setCalcAll(null);
@@ -359,11 +380,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
   // Driver sheet — compile all jobs for a vehicle into text
   const getDriverSheet = (v) => {
-    const vJobs = dayJobs.filter(j => j.vehicleId === v.id).sort((a,b) => {
-      const aT = a.driverDepart || a.stops?.find(s=>s.type==="destination")?.arrivalTime || "99:99";
-      const bT = b.driverDepart || b.stops?.find(s=>s.type==="destination")?.arrivalTime || "99:99";
-      return aT.localeCompare(bT);
-    });
+    const vJobs = dayJobs.filter(j => j.vehicleId === v.id).sort((a,b) => getJobTime(a).localeCompare(getJobTime(b)));
     const drv = crew.find(c => c.id === v.driverId);
     let txt = `DRIVER SHEET — ${day?.label} · ${fmtDate(day?.date)}\n`;
     txt += `Driver: ${drv?.name || "TBD"} | Vehicle: ${v.label} (${v.plate})\n`;
@@ -371,8 +388,16 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
     vJobs.forEach((job, i) => {
       const jt = JOB_TYPES.find(t => t.id === job.jobType) || JOB_TYPES[5];
       const isReturnJob = job.jobType === "wrap_return";
+      const isMoveJob = job.jobType === "set_move" || job.jobType === "errand" || job.jobType === "custom";
       txt += `${jt.icon} JOB ${i+1}: ${job.label}\n`;
-      if (isReturnJob) {
+      if (isMoveJob) {
+        const mf = job.stops?.find(s => s.type === "move_from");
+        const mt = job.stops?.find(s => s.type === "move_to");
+        const fL = locations.find(l => l.id === mf?.locationId);
+        const tL = locations.find(l => l.id === mt?.locationId);
+        txt += `   Depart: ${fmtTime(mf?.departTime)} from ${fL?.name || mf?.address || ""}\n`;
+        txt += `   → ${fmtTime(mt?.arrivalTime)} ARRIVE ${tL?.name || mt?.address || ""}\n`;
+      } else if (isReturnJob) {
         const origin = job.stops?.find(s => s.type === "origin");
         const oLoc = locations.find(l => l.id === origin?.locationId);
         txt += `   Depart: ${fmtTime(origin?.departTime)} from ${oLoc?.name || origin?.address || ""}\n`;

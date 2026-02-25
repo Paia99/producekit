@@ -128,10 +128,45 @@ export const AddressInput = ({ value, onChange, placeholder, style: extraStyle }
 };
 
 // ─── API HELPER ──────────────────────────────────────────────
-export async function callRouteOptimize(route, vehicles, crew, cast, day) {
+export async function callRouteOptimize(route, vehicles, crew, cast, day, opts = {}) {
   const vehicle = vehicles.find(v => v.id === route.vehicleId);
   const driver = crew.find(c => c.id === vehicle?.driverId);
   const driverStart = driver?.address || "Prague, CZ";
+  const isReturn = opts.mode === "return";
+  
+  if (isReturn) {
+    // RETURN MODE: forward from departure time
+    const origin = opts.origin || {};
+    const dropoffs = opts.dropoffs || [];
+    const departTime = origin.departTime || day?.wrapTime || "18:00";
+    const originAddr = origin.address || "";
+    
+    try {
+      const resp = await fetch("/api/route-optimize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "return", driver_start: originAddr, dropoffs: dropoffs.map(s => ({ id: String(s.personId), name: s.personType === "cast" ? cast.find(c => String(c.id) === String(s.personId))?.name || "?" : crew.find(c => c.id === s.personId)?.name || "?", address: s.address, personType: s.personType })), depart_time: departTime, depart_date: day?.date, buffer_minutes: 5, stop_duration: 2, traffic: true }) });
+      if (resp.ok) { const data = await resp.json(); if (!data.error) return data; }
+    } catch (e) {}
+    
+    // Demo: calculate forward from depart time
+    await new Promise(r => setTimeout(r, 800));
+    const [dh, dm] = departTime.split(":").map(Number);
+    let cur = dh * 60 + dm;
+    const fd = dropoffs.map(() => 8 + Math.floor(Math.random() * 18));
+    const fdi = dropoffs.map(() => (2 + Math.random() * 10).toFixed(1));
+    const tn = ["Clear roads","Light traffic","Moderate traffic","Light traffic"];
+    const sched = [];
+    cur += 5 + Math.floor(Math.random() * 8); // initial drive from set
+    for (let i = 0; i < dropoffs.length; i++) {
+      cur += fd[i]; if (i > 0) cur += 2;
+      const hh = Math.floor(((cur%1440)+1440)%1440/60); const mm = ((cur%1440)+1440)%1440%60;
+      sched.push({ id: String(dropoffs[i].personId), name: dropoffs[i].personType === "cast" ? cast.find(c => String(c.id) === String(dropoffs[i].personId))?.name || "?" : crew.find(c => c.id === dropoffs[i].personId)?.name || "?", address: dropoffs[i].address, personType: dropoffs[i].personType, dropoff_time: `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`, drive_to_next_minutes: fd[i], distance_to_next: `${fdi[i]} mi`, traffic_note: tn[i%tn.length] });
+    }
+    const td = fd.reduce((a,b) => a+b, 0) + 5 + Math.floor(Math.random()*8);
+    const tdi = fdi.reduce((a,b) => a+parseFloat(b), 0).toFixed(1);
+    const tDel = Math.floor(Math.random()*10);
+    return { demo:true, schedule:{ driver_depart: departTime, stops:sched }, total_drive_minutes:td, total_distance_miles:tdi, traffic_summary:tDel<=2?"Roads clear.":tDel<=6?`Light traffic. +${tDel} min.`:`Moderate traffic. +${tDel} min.`, traffic_delay_minutes:tDel, google_maps_url:`https://www.google.com/maps/dir/${encodeURIComponent(originAddr)}/${dropoffs.map(p=>encodeURIComponent(p.address)).join("/")}` };
+  }
+  
+  // PICKUP MODE: backward from arrival time
   const dest = route.stops.find(s => s.type === "destination");
   const pickups = route.stops.filter(s => s.type === "pickup").map(s => {
     const name = s.personType === "cast" ? cast.find(c => String(c.id) === String(s.personId))?.name || "?" : crew.find(c => c.id === s.personId)?.name || "?";
@@ -146,12 +181,12 @@ export async function callRouteOptimize(route, vehicles, crew, cast, day) {
   const fdi = pickups.map(() => (2 + Math.random() * 12).toFixed(1));
   const tn = ["Clear roads","Light traffic","Moderate traffic","Light traffic"];
   const [ch, cm] = (dest?.arrivalTime || day?.callTime || "06:00").split(":").map(Number);
-  let cur = ch * 60 + cm - 5; const sched = [];
+  let cur = ch * 60 + cm; const sched = [];
   for (let i = pickups.length - 1; i >= 0; i--) { cur -= fd[i]; if (i < pickups.length - 1) cur -= 2; const hh = Math.floor(((cur%1440)+1440)%1440/60); const mm = ((cur%1440)+1440)%1440%60; sched.unshift({ ...pickups[i], pickup_time: `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`, drive_to_next_minutes: fd[i], distance_to_next: `${fdi[i]} mi`, traffic_note: tn[i%tn.length] }); }
   cur -= (5 + Math.floor(Math.random() * 10));
-  const dh = Math.floor(((cur%1440)+1440)%1440/60); const dm = ((cur%1440)+1440)%1440%60;
+  const dh = Math.floor(((cur%1440)+1440)%1440/60); const dmi = ((cur%1440)+1440)%1440%60;
   const td = fd.reduce((a,b) => a+b, 0) + 5 + Math.floor(Math.random()*10);
   const tdi = fdi.reduce((a,b) => a+parseFloat(b), 0).toFixed(1);
   const tDel = Math.floor(Math.random()*12);
-  return { demo:true, schedule:{ driver_depart:`${String(dh).padStart(2,"0")}:${String(dm).padStart(2,"0")}`, stops:sched, arrival:subMin(dest?.arrivalTime||"06:00",5), call_time:dest?.arrivalTime||day?.callTime||"06:00" }, total_drive_minutes:td, total_distance_miles:tdi, traffic_summary:tDel<=2?"Roads clear.":tDel<=8?`Light traffic. +${tDel} min.`:`Moderate traffic. +${tDel} min.`, traffic_delay_minutes:tDel, google_maps_url:`https://www.google.com/maps/dir/${encodeURIComponent(driverStart)}/${pickups.map(p=>encodeURIComponent(p.address)).join("/")}/${encodeURIComponent(dest?.address||"")}` };
+  return { demo:true, schedule:{ driver_depart:`${String(dh).padStart(2,"0")}:${String(dmi).padStart(2,"0")}`, stops:sched, arrival:dest?.arrivalTime||day?.callTime||"06:00", call_time:dest?.arrivalTime||day?.callTime||"06:00" }, total_drive_minutes:td, total_distance_miles:tdi, traffic_summary:tDel<=2?"Roads clear.":tDel<=8?`Light traffic. +${tDel} min.`:`Moderate traffic. +${tDel} min.`, traffic_delay_minutes:tDel, google_maps_url:`https://www.google.com/maps/dir/${encodeURIComponent(driverStart)}/${pickups.map(p=>encodeURIComponent(p.address)).join("/")}/${encodeURIComponent(dest?.address||"")}` };
 }
