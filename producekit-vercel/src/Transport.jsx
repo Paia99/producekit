@@ -495,93 +495,124 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
       {calcErr&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> {calcErr}</div>}
 
-      {/* Shuttle Planner — who needs transport */}
-      <div style={{marginBottom:12}}>
-        <button onClick={()=>setShowShuttle(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
-          <span style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:14}}>🗓</span>
-            <span style={{fontWeight:700,fontSize:13}}>Shuttle Planner</span>
-            {(()=>{
-              const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
-              const castIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
-              const plannedIds = new Set();
-              dayJobs.forEach(j=>{(j.stops||[]).forEach(s=>{if(s.personId)plannedIds.add(String(s.personId));});});
-              const unplanned = castIds.filter(id=>!plannedIds.has(String(id))).length;
-              const crewUnplanned = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver"&&!plannedIds.has(String(c.id))).length;
-              const total = unplanned+crewUnplanned;
-              return total>0?<span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:10}}>{total} need transport</span>:<span style={{fontSize:10,fontWeight:700,color:"#22c55e"}}>All covered ✓</span>;
-            })()}
-          </span>
-          <span style={{fontSize:10,color:"#666"}}>{showShuttle?"▲ Hide":"▼ Show"}</span>
-        </button>
-        {showShuttle&&(()=>{
-          const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
-          const dayCastIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
-          const dayCast = dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);
-          const dayCrew = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver");
-          const plannedIds = new Set();
-          const personJobMap = {};
-          dayJobs.forEach(j=>{
-            const v=vehicles.find(x=>x.id===j.vehicleId);
-            (j.stops||[]).forEach(s=>{
-              if(s.personId){plannedIds.add(String(s.personId));personJobMap[String(s.personId)]={job:j,vehicle:v,stop:s};}
-            });
-          });
-          return <div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
-              <thead><tr style={{borderBottom:"1px solid #1e2028"}}>
-                {["","Name","Role","Call","Costume","Status","Vehicle",""].map(h=><th key={h} style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textTransform:"uppercase",textAlign:"left"}}>{h}</th>)}
+
+      {/* Shuttle Planner */}
+      {(()=>{
+        const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
+        const dayCastIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
+        const dayCast = dayCastIds.map(id=>cast.find(c=>c.id===id)).filter(Boolean);
+        const dayCrew = crew.filter(c=>c.status==="confirmed"&&c.dept!=="Driver");
+        const pickupJobs = dayJobs.filter(j=>j.jobType==="am_pickup"||j.jobType==="pm_pickup");
+        const returnJobs = dayJobs.filter(j=>j.jobType==="wrap_return");
+        const pickupMap = {};
+        const returnMap = {};
+        pickupJobs.forEach(j=>{const v=vehicles.find(x=>x.id===j.vehicleId);(j.stops||[]).filter(s=>s.type==="pickup"&&s.personId).forEach(s=>{pickupMap[String(s.personId)]={job:j,vehicle:v};});});
+        returnJobs.forEach(j=>{const v=vehicles.find(x=>x.id===j.vehicleId);(j.stops||[]).filter(s=>s.type==="dropoff"&&s.personId).forEach(s=>{returnMap[String(s.personId)]={job:j,vehicle:v};});});
+        const vehPickupCount = {};
+        const vehReturnCount = {};
+        pickupJobs.forEach(j=>{vehPickupCount[j.vehicleId]=(vehPickupCount[j.vehicleId]||0)+(j.stops||[]).filter(s=>s.type==="pickup"&&s.personId).length;});
+        returnJobs.forEach(j=>{vehReturnCount[j.vehicleId]=(vehReturnCount[j.vehicleId]||0)+(j.stops||[]).filter(s=>s.type==="dropoff"&&s.personId).length;});
+        const allPeople = [...dayCast.map(c=>({...c,isCast:true})),...dayCrew.map(c=>({...c,isCast:false}))];
+        const pickupUnplanned = allPeople.filter(p=>!pickupMap[String(p.id)]);
+        const returnUnplanned = allPeople.filter(p=>!returnMap[String(p.id)]);
+
+        const assignTo = (person, vehicleId, mode) => {
+          const pType = person.isCast ? "cast" : "crew";
+          const p = allP.find(x=>String(x.id)===String(person.id)&&x.type===pType);
+          if (mode==="pickup") {
+            const ej = pickupJobs.find(j=>j.vehicleId===vehicleId);
+            if (ej) {
+              setRoutes(prev=>prev.map(r=>{
+                if(r.id!==ej.id)return r;
+                const dest=r.stops.find(s=>s.type==="destination");
+                const others=r.stops.filter(s=>s.type!=="destination");
+                return{...r,stops:[...others,{type:"pickup",personType:pType,personId:person.id,address:p?.address||"",pickupTime:"",estDrive:15,distance:"",trafficNote:""},dest].filter(Boolean),optimized:false};
+              }));
+            } else {
+              const dest={type:"destination",locationId:locations[0]?.id||"",address:locations[0]?.address||"",arrivalTime:day?.callTime||"06:00",estDrive:0};
+              setRoutes(prev=>[...prev,{id:"j"+Date.now(),vehicleId,dayId:selDay,label:"AM Pickup",jobType:"am_pickup",stops:[{type:"pickup",personType:pType,personId:person.id,address:p?.address||"",pickupTime:"",estDrive:15,distance:"",trafficNote:""},dest],notes:"",status:"draft",optimized:false,demo:false,gmapsUrl:"",totalDrive:null,totalDistance:null,trafficSummary:""}]);
+            }
+          } else {
+            const ej = returnJobs.find(j=>j.vehicleId===vehicleId);
+            if (ej) {
+              setRoutes(prev=>prev.map(r=>{
+                if(r.id!==ej.id)return r;
+                return{...r,stops:[...r.stops,{type:"dropoff",personType:pType,personId:person.id,address:p?.address||"",dropoffTime:"",estDrive:15,distance:"",trafficNote:""}],optimized:false};
+              }));
+            } else {
+              const origin={type:"origin",locationId:locations[0]?.id||"",address:locations[0]?.address||"",departTime:day?.wrapTime||"18:00"};
+              setRoutes(prev=>[...prev,{id:"j"+Date.now()+"r",vehicleId,dayId:selDay,label:"Wrap Return",jobType:"wrap_return",stops:[origin,{type:"dropoff",personType:pType,personId:person.id,address:p?.address||"",dropoffTime:"",estDrive:15,distance:"",trafficNote:""}],notes:"",status:"draft",optimized:false,demo:false,gmapsUrl:"",totalDrive:null,totalDistance:null,trafficSummary:""}]);
+            }
+          }
+        };
+        const unassign = (personId, mode) => {
+          const jobs = mode==="pickup"?pickupJobs:returnJobs;
+          const sType = mode==="pickup"?"pickup":"dropoff";
+          setRoutes(prev=>prev.map(r=>{
+            if(!jobs.some(j=>j.id===r.id))return r;
+            return{...r,stops:r.stops.filter(s=>!(s.type===sType&&String(s.personId)===String(personId))),optimized:false};
+          }).filter(r=>{
+            if(!jobs.some(j=>j.id===r.id))return true;
+            return r.stops.filter(s=>s.type===sType).length>0;
+          }));
+        };
+        const vOpts = (cMap) => vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);const used=cMap[v.id]||0;const cap=vt?.capacity||8;const full=used>=cap;return{id:v.id,label:v.label,color:v.color,used,cap,full};});
+
+        return <div style={{marginBottom:12}}>
+          <button onClick={()=>setShowShuttle(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
+            <span style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:14}}>🗓</span>
+              <span style={{fontWeight:700,fontSize:13}}>Shuttle Planner</span>
+              {pickupUnplanned.length>0&&<span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:10}}>🌅 {pickupUnplanned.length}</span>}
+              {returnUnplanned.length>0&&<span style={{fontSize:10,fontWeight:700,color:"#a855f7",background:"#a855f718",padding:"2px 8px",borderRadius:10}}>🌙 {returnUnplanned.length}</span>}
+              {pickupUnplanned.length===0&&returnUnplanned.length===0&&<span style={{fontSize:10,fontWeight:700,color:"#22c55e"}}>✓</span>}
+            </span>
+            <span style={{fontSize:10,color:"#666"}}>{showShuttle?"▲":"▼"}</span>
+          </button>
+          {showShuttle&&<div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+              <thead><tr style={{borderBottom:"2px solid #1e2028"}}>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left",width:24}}>#</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left"}}>Name</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#f59e0b",textAlign:"left",width:46}}>Time</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#E8C94A",textAlign:"left",width:130}}>🌅 AM Pickup</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#a855f7",textAlign:"left",width:130}}>🌙 Wrap Return</th>
               </tr></thead>
               <tbody>
-                {dayCast.map(c=>{
-                  const planned = plannedIds.has(String(c.id));
-                  const pj = personJobMap[String(c.id)];
-                  const cs = day?.callSheet?.cast?.[String(c.id)];
-                  return <tr key={c.id} style={{borderBottom:"1px solid #1a1d23",background:planned?"transparent":"#ef444406"}}>
-                    <td style={{padding:"4px 8px"}}><span style={{width:6,height:6,borderRadius:"50%",display:"inline-block",background:planned?"#22c55e":"#ef4444"}}/></td>
-                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:600,color:"#f0f0f0"}}><span style={{color:"#E8C94A",fontWeight:800,marginRight:4}}>#{c.roleNum}</span>{c.name}</td>
-                    <td style={{padding:"4px 8px",fontSize:10,color:"#888"}}>{c.roleName||""}</td>
-                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:700,color:"#22c55e",fontFamily:"monospace"}}>{cs?.onSet||cs?.costume||"—"}</td>
-                    <td style={{padding:"4px 8px",fontSize:10,color:"#f59e0b",fontFamily:"monospace"}}>{cs?.costume||"—"}</td>
-                    <td style={{padding:"4px 8px"}}>{planned
-                      ?<span style={{fontSize:9,color:pj?.vehicle?.color||"#22c55e",background:(pj?.vehicle?.color||"#22c55e")+"18",padding:"2px 6px",borderRadius:3,fontWeight:700}}>{pj?.vehicle?.label||"assigned"}</span>
-                      :<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>MISSING</span>}
-                    </td>
-                    <td style={{padding:"4px 8px",fontSize:10,color:"#666"}}>{pj?.vehicle?.label||""}</td>
-                    <td style={{padding:"4px 8px"}}>{!planned&&vehicles.length>0&&<select onChange={e=>{if(!e.target.value)return;setEditJob({vehicleId:e.target.value,job:"new"});}} value="" style={{...IS,width:100,fontSize:10,padding:"3px 6px"}}>
-                      <option value="">+ Add to...</option>
-                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
-                    </select>}</td>
-                  </tr>;
-                })}
-                {dayCrew.length>0&&<tr><td colSpan={8} style={{padding:"8px 8px 4px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",borderBottom:"1px solid #1e2028"}}>Crew</td></tr>}
-                {dayCrew.map(c=>{
-                  const planned = plannedIds.has(String(c.id));
-                  const pj = personJobMap[String(c.id)];
-                  return <tr key={c.id} style={{borderBottom:"1px solid #1a1d23",background:planned?"transparent":"#ef444406"}}>
-                    <td style={{padding:"4px 8px"}}><span style={{width:6,height:6,borderRadius:"50%",display:"inline-block",background:planned?"#22c55e":"#ef4444"}}/></td>
-                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:600,color:"#ccc"}}>{c.name}</td>
-                    <td style={{padding:"4px 8px",fontSize:10,color:"#888"}}>{c.dept} — {c.role}</td>
-                    <td style={{padding:"4px 8px",fontSize:11,fontWeight:700,color:"#888",fontFamily:"monospace"}}>{day?.callTime||"—"}</td>
-                    <td style={{padding:"4px 8px"}}>—</td>
-                    <td style={{padding:"4px 8px"}}>{planned
-                      ?<span style={{fontSize:9,color:pj?.vehicle?.color||"#22c55e",background:(pj?.vehicle?.color||"#22c55e")+"18",padding:"2px 6px",borderRadius:3,fontWeight:700}}>{pj?.vehicle?.label||"assigned"}</span>
-                      :<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>MISSING</span>}
-                    </td>
-                    <td style={{padding:"4px 8px",fontSize:10,color:"#666"}}>{pj?.vehicle?.label||""}</td>
-                    <td style={{padding:"4px 8px"}}>{!planned&&vehicles.length>0&&<select onChange={e=>{if(!e.target.value)return;setEditJob({vehicleId:e.target.value,job:"new"});}} value="" style={{...IS,width:100,fontSize:10,padding:"3px 6px"}}>
-                      <option value="">+ Add to...</option>
-                      {vehicles.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
-                    </select>}</td>
-                  </tr>;
-                })}
+                {dayCast.map(c=>{const cs=day?.callSheet?.cast?.[String(c.id)];const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"c"+c.id} style={{borderBottom:"1px solid #1a1d23"}}>
+                  <td style={{padding:"3px 8px",fontSize:10,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
+                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:600,color:"#f0f0f0"}}>{c.name}{c.roleName&&<span style={{fontSize:9,color:"#555",marginLeft:4}}>({c.roleName})</span>}</td>
+                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:700,color:"#f59e0b",fontFamily:"monospace"}}>{cs?.costume||"—"}</td>
+                  <td style={{padding:"3px 6px"}}>{pi
+                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:pi.vehicle?.color||"#22c55e",background:(pi.vehicle?.color||"#22c55e")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{pi.vehicle?.label}</span><button onClick={()=>unassign(c.id,"pickup")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
+                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:true},e.target.value,"pickup");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehPickupCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
+                  }</td>
+                  <td style={{padding:"3px 6px"}}>{ri
+                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:ri.vehicle?.color||"#a855f7",background:(ri.vehicle?.color||"#a855f7")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{ri.vehicle?.label}</span><button onClick={()=>unassign(c.id,"return")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
+                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:true},e.target.value,"return");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehReturnCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
+                  }</td>
+                </tr>;})}
+                {dayCrew.length>0&&<tr><td colSpan={5} style={{padding:"5px 8px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",background:"#3b82f606",borderBottom:"1px solid #1e2028"}}>Crew ({dayCrew.length})</td></tr>}
+                {dayCrew.map(c=>{const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"w"+c.id} style={{borderBottom:"1px solid #1a1d23"}}>
+                  <td style={{padding:"3px 8px"}}></td>
+                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:500,color:"#ccc"}}>{c.name}<span style={{fontSize:9,color:"#555",marginLeft:4}}>{c.dept}</span></td>
+                  <td style={{padding:"3px 8px",fontSize:10,color:"#666",fontFamily:"monospace"}}>{day?.callTime||"—"}</td>
+                  <td style={{padding:"3px 6px"}}>{pi
+                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:pi.vehicle?.color||"#22c55e",background:(pi.vehicle?.color||"#22c55e")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{pi.vehicle?.label}</span><button onClick={()=>unassign(c.id,"pickup")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
+                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:false},e.target.value,"pickup");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehPickupCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
+                  }</td>
+                  <td style={{padding:"3px 6px"}}>{ri
+                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:ri.vehicle?.color||"#a855f7",background:(ri.vehicle?.color||"#a855f7")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{ri.vehicle?.label}</span><button onClick={()=>unassign(c.id,"return")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
+                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:false},e.target.value,"return");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehReturnCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
+                  }</td>
+                </tr>;})}
               </tbody>
             </table>
-          </div>;
-        })()}
-      </div>
+          </div>}
+        </div>;
+      })()}
 
-      {/* Vehicle Day Plans */}
+            {/* Vehicle Day Plans */}
       {vehicles.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>🚐</div><div style={{fontSize:14,marginBottom:8}}>No vehicles. Add vehicles in Fleet tab.</div></div>}
 
       {vehiclesWithJobs.map(v => {
