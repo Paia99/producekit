@@ -10,21 +10,37 @@ const JOB_TYPES = [
   { id:"custom", label:"Custom", icon:"🚐", color:"#888" },
 ];
 
-/* ── TimeInput — local state, syncs on blur/Enter (prevents re-render wipe) ── */
-const TimeInput = ({ value, onChange, placeholder, style }) => {
+/* ── TimeInput — local state + blur sync + up/down controls ── */
+const TimeInput = ({ value, onChange, placeholder, label }) => {
   const [local, setLocal] = useState(value || "");
-  const ref = useRef(onChange);
-  ref.current = onChange;
+  const cbRef = useRef(onChange);
+  const localRef = useRef(local);
+  cbRef.current = onChange;
+  localRef.current = local;
   useEffect(() => { setLocal(value || ""); }, [value]);
-  const commit = () => { if (local !== (value||"")) ref.current(local); };
-  return <input
-    value={local}
-    onChange={e => setLocal(e.target.value)}
-    onBlur={commit}
-    onKeyDown={e => { if (e.key === "Enter") { commit(); e.target.blur(); } }}
-    placeholder={placeholder || "HH:MM"}
-    style={{ ...IS, width: 80, fontFamily: "monospace", textAlign: "center", ...style }}
-  />;
+  const commit = (v) => { const val = v !== undefined ? v : localRef.current; if (val !== (value||"")) cbRef.current(val); };
+  const nudge = (mins) => {
+    const t = localRef.current || placeholder || "06:00";
+    const [h,m] = t.split(":").map(Number);
+    if (isNaN(h)||isNaN(m)) return;
+    const total = ((h*60+m+mins)%1440+1440)%1440;
+    const nv = `${String(Math.floor(total/60)).padStart(2,"0")}:${String(total%60).padStart(2,"0")}`;
+    setLocal(nv);
+    cbRef.current(nv);
+  };
+  return <div style={{display:"flex",alignItems:"center",gap:0}}>
+    {label&&<span style={{fontSize:9,fontWeight:700,color:"#666",marginRight:6,textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>}
+    <button onClick={()=>nudge(-15)} style={{background:"#1e2128",border:"1px solid #2a2d35",borderRadius:"6px 0 0 6px",color:"#888",cursor:"pointer",padding:"6px 5px",fontSize:11,lineHeight:1,fontWeight:700}} title="-15m">◀</button>
+    <input
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => commit()}
+      onKeyDown={e => { if (e.key === "Enter") { commit(); e.target.blur(); } if (e.key==="ArrowUp"){e.preventDefault();nudge(5);} if (e.key==="ArrowDown"){e.preventDefault();nudge(-5);} }}
+      placeholder={placeholder || "HH:MM"}
+      style={{width:58,background:"#0d0f13",border:"1px solid #2a2d35",borderLeft:"none",borderRight:"none",padding:"6px 4px",color:"#E8C94A",fontSize:14,fontWeight:800,fontFamily:"monospace",textAlign:"center",outline:"none",boxSizing:"border-box"}}
+    />
+    <button onClick={()=>nudge(15)} style={{background:"#1e2128",border:"1px solid #2a2d35",borderRadius:"0 6px 6px 0",color:"#888",cursor:"pointer",padding:"6px 5px",fontSize:11,lineHeight:1,fontWeight:700}} title="+15m">▶</button>
+  </div>;
 };
 
 /* ── Job Form — self-contained, reused for create/edit ── */
@@ -39,16 +55,16 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
   const isReturn = jobType === "wrap_return";
   const isMove = jobType === "set_move" || jobType === "errand" || jobType === "custom";
 
-  const addStop = () => {
-    if (isMove) return; // moves have fixed from→to, no extra stops
+  const addStop = (pType) => {
+    if (isMove) return;
     const newId = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
     setStops(prev => {
       if (isReturn) {
-        const ns = { _id: newId, type: "dropoff", personType: "cast", personId: "", address: "", dropoffTime: "", estDrive: 15, distance: "", trafficNote: "" };
+        const ns = { _id: newId, type: "dropoff", personType: pType||"cast", personId: "", address: "", dropoffTime: "", estDrive: 15, distance: "", trafficNote: "" };
         return [...prev, ns];
       }
       const di = prev.findIndex(x => x.type === "destination");
-      const ns = { _id: newId, type: "pickup", personType: "cast", personId: "", address: "", pickupTime: "", estDrive: 15, distance: "", trafficNote: "" };
+      const ns = { _id: newId, type: "pickup", personType: pType||"cast", personId: "", address: "", pickupTime: "", estDrive: 15, distance: "", trafficNote: "" };
       const copy = [...prev];
       if (di >= 0) copy.splice(di, 0, ns); else copy.push(ns);
       return copy;
@@ -123,7 +139,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             <select value={s.locationId||""} onChange={e=>{const loc=locations.find(l=>l.id===e.target.value);updateStop(s._id,"locationId",e.target.value);if(loc)updateStop(s._id,"address",loc.address||"");}} style={{...IS,flex:1}}>
               <option value="">— Select location —</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
-            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="18:00"/>
+            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="18:00" label="depart"/>
           </div>
         ))}
         {stops.filter(s=>s.type==="dropoff").map((s,i)=>(
@@ -140,7 +156,10 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             <button onClick={()=>removeStop(s._id)} style={{background:"none",border:"none",color:"#555",cursor:"pointer"}}><I.Trash/></button>
           </div>
         ))}
-        <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Drop-off</button>
+        <div style={{display:"flex",gap:6,marginTop:4}}>
+          <button onClick={()=>addStop("cast")} style={{...BS,flex:1}}><I.Plus/> Cast</button>
+          <button onClick={()=>addStop("crew")} style={{...BS,flex:1}}><I.Plus/> Crew</button>
+        </div>
       </div>
     ) : isMove ? (
       /* ── SET MOVE / ERRAND: From → To (addresses only) ── */
@@ -157,7 +176,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="From address..." style={{flex:1}}/>
             )}
-            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="10:00"/>
+            <TimeInput value={s.departTime} onChange={v=>updateStop(s._id,"departTime",v)} placeholder="10:00" label="depart"/>
           </div>
         ))}
         {stops.filter(s=>s.type==="move_to").map(s=>(
@@ -171,7 +190,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="To address..." style={{flex:1}}/>
             )}
-            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="10:30"/>
+            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="10:30" label="arrive"/>
           </div>
         ))}
       </div>
@@ -202,10 +221,13 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
             ) : (
               <AddressInput value={s.address} onChange={v=>{updateStop(s._id,"address",v);updateStop(s._id,"locationId","");}} placeholder="Type destination address..."/>
             )}
-            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="06:00"/>
+            <TimeInput value={s.arrivalTime} onChange={v=>updateStop(s._id,"arrivalTime",v)} placeholder="06:00" label="arrive"/>
           </div>
         ) : null)}
-        <button onClick={addStop} style={{...BS,width:"100%",marginTop:4}}><I.Plus/> Add Pickup Stop</button>
+        <div style={{display:"flex",gap:6,marginTop:4}}>
+          <button onClick={()=>addStop("cast")} style={{...BS,flex:1}}><I.Plus/> Cast</button>
+          <button onClick={()=>addStop("crew")} style={{...BS,flex:1}}><I.Plus/> Crew</button>
+        </div>
       </div>
     )}
     {/* Cast call times reference */}
@@ -500,7 +522,6 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:14}}>{jt.icon}</span>
                     <span style={{fontWeight:700,color:jt.color,fontSize:13}}>{job.label}</span>
-                    {job.demo&&<span style={{fontSize:9,color:"#f59e0b",background:"#f59e0b18",padding:"2px 6px",borderRadius:3,fontWeight:700}}>DEMO</span>}
                     <StatusBadge status={job.status||"draft"}/>
                     {job.totalDrive&&<span style={{fontSize:10,color:"#888"}}>⏱ {job.totalDrive} min</span>}
                     {job.totalDistance&&<span style={{fontSize:10,color:"#888"}}>{toKm(job.totalDistance)} km</span>}
@@ -555,7 +576,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                         {s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}
                         <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
                       </div>
-                      {s.pickupTime&&<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.pickupTime)}</span>}
+                      <span style={{fontSize:s.pickupTime?13:9,fontWeight:s.pickupTime?800:600,color:s.pickupTime?jt.color:"#555",flexShrink:0,fontFamily:"monospace"}}>{s.pickupTime?fmtTime(s.pickupTime):"? : ?"}</span>
                       <TrafficBadge note={s.trafficNote}/>
                     </div>)}
                     {dest&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
