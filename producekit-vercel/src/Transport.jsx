@@ -258,7 +258,7 @@ const JobForm = ({ initial, allP, locations, day, strips, cast, onSave, onDelete
 const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strips, crew, cast, locations }) => {
   const [selDay,setSelDay]=useState(days[0]?.id||"");
   const [viewMode,setViewMode]=useState("plan"); // plan | fleet | drivers
-  const [showShuttle,setShowShuttle]=useState(false);
+  const [showRoster,setShowRoster]=useState(true);
   const [editJob,setEditJob]=useState(null); // null | {vehicleId, job:"new"|jobObj}
   const [editVeh,setEditVeh]=useState(null);
   const [vf,setVf]=useState({});
@@ -496,7 +496,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
       {calcErr&&<div style={{background:"#f59e0b18",border:"1px solid #f59e0b33",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f59e0b"}}><I.AlertTriangle/> {calcErr}</div>}
 
 
-      {/* Shuttle Planner */}
+      {/* Transport Roster */}
       {(()=>{
         const dayStrips = day ? day.strips.map(sid=>strips.find(s=>s.id===sid)).filter(Boolean) : [];
         const dayCastIds = [...new Set(dayStrips.flatMap(s=>s.cast))];
@@ -582,17 +582,17 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         );
 
         return <div style={{marginBottom:12}}>
-          <button onClick={()=>setShowShuttle(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
+          <button onClick={()=>setShowRoster(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
             <span style={{display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:14}}>🗓</span>
-              <span style={{fontWeight:700,fontSize:13}}>Shuttle Planner</span>
+              <span style={{fontWeight:700,fontSize:13}}>Transport Roster</span>
               {pickupUnplanned.length>0&&<span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:10}}>🌅 {pickupUnplanned.length}</span>}
               {returnUnplanned.length>0&&<span style={{fontSize:10,fontWeight:700,color:"#a855f7",background:"#a855f718",padding:"2px 8px",borderRadius:10}}>🌙 {returnUnplanned.length}</span>}
               {pickupUnplanned.length===0&&returnUnplanned.length===0&&<span style={{fontSize:10,fontWeight:700,color:"#22c55e"}}>✓</span>}
             </span>
-            <span style={{fontSize:10,color:"#666"}}>{showShuttle?"▲":"▼"}</span>
+            <span style={{fontSize:10,color:"#666"}}>{showRoster?"▲":"▼"}</span>
           </button>
-          {showShuttle&&<div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"auto"}}>
+          {showRoster&&<div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",minWidth:520}}>
               <thead><tr style={{borderBottom:"2px solid #1e2028"}}>
                 <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left",width:28}}>#</th>
@@ -610,7 +610,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                   <td style={{padding:"4px 6px"}}>{ri?<VehBadge info={ri} personId={c.id} mode="return"/>:<VehSelect person={c} isCast={true} mode="return" cMap={vehReturnCount}/>}</td>
                 </tr>;})}
                 {sortedCrew.length>0&&<tr><td colSpan={5} style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",background:"#3b82f606",borderTop:"2px solid #1e2028",borderBottom:"1px solid #1e2028"}}>Crew ({sortedCrew.length})</td></tr>}
-                {sortedCrew.map(c=>{const crewCall=day?.callSheet?.crew?.[String(c.id)]?.callTime||day?.callTime||"—";const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"w"+c.id} style={{borderBottom:"1px solid #1a1d23",background:(!pi||!ri)?"#ef444404":"transparent"}}>
+                {sortedCrew.map(c=>{const crewCall=day?.callTime||"—";const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"w"+c.id} style={{borderBottom:"1px solid #1a1d23",background:(!pi||!ri)?"#ef444404":"transparent"}}>
                   <td style={{padding:"4px 8px"}}></td>
                   <td style={{padding:"4px 8px"}}><span style={{fontSize:12,fontWeight:500,color:"#ccc"}}>{c.name}</span><span style={{fontSize:9,color:"#555",marginLeft:5}}>{c.dept}</span></td>
                   <td style={{padding:"4px 8px",textAlign:"center"}}><span style={{fontSize:14,fontWeight:800,color:"#888",fontFamily:"monospace"}}>{crewCall}</span></td>
@@ -623,7 +623,15 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         </div>;
       })()}
 
-                  {/* Vehicle Day Plans */}
+                  {/* Day Actions + Vehicle Day Plans */}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <button onClick={async()=>{for(const v of vehicles){const jobs=dayJobs.filter(j=>j.vehicleId===v.id);for(const job of jobs){const isRet=job.jobType==="wrap_return";const isMov=job.jobType==="set_move"||job.jobType==="errand"||job.jobType==="custom";if(isMov)continue;const ppl=isRet?(job.stops||[]).filter(s=>s.type==="dropoff"):(job.stops||[]).filter(s=>s.type==="pickup");if(ppl.length>0)await calcRoute(job);}}}} disabled={!!calc||!!calcAll} style={{...BS,padding:"6px 14px",fontSize:11,fontWeight:700}}>
+          {calc||calcAll?"⏳ Calculating...":"📍 Calculate All Routes"}
+        </button>
+        <button onClick={()=>{const ready=dayJobs.filter(j=>j.optimized||j.jobType==="wrap_return");if(ready.length===0)return;const allMsgs=[];ready.forEach(j=>{const v=vehicles.find(x=>x.id===j.vehicleId);const drv=crew.find(c=>c.id===v?.driverId);const isRet=j.jobType==="wrap_return";if(isRet){const origin=j.stops?.find(s=>s.type==="origin");const oLoc=locations.find(l=>l.id===origin?.locationId);const dropoffs=j.stops?.filter(s=>s.type==="dropoff")||[];dropoffs.forEach(s=>{const name=gPN(s);allMsgs.push({to:name,job:j.label,msg:`Wrap transport: ${fmtTime(origin?.departTime)} from ${oLoc?.name||origin?.address||"set"}. Vehicle: ${v?.label||"—"}, Driver: ${drv?.name||"—"}.`});});}else{const pk=j.stops?.filter(s=>s.type==="pickup")||[];const dest=j.stops?.find(s=>s.type==="destination");pk.forEach(s=>{const name=gPN(s);allMsgs.push({to:name,job:j.label,msg:`Pickup: ${fmtTime(s.pickupTime)} from ${s.address||"—"}. Vehicle: ${v?.label||"—"}, Driver: ${drv?.name||"—"}. Call: ${fmtTime(dest?.arrivalTime)}.`});});}});setDispPrev({route:{label:"All — "+day?.label},msgs:allMsgs,dMsg:null,isAll:true});}} style={{...BS,padding:"6px 14px",fontSize:11,fontWeight:700,borderColor:"#3b82f633",color:"#3b82f6"}}>
+          <I.Send/> Dispatch All ({dayJobs.filter(j=>j.optimized||j.jobType==="wrap_return").length})
+        </button>
+      </div>
       {vehicles.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>🚐</div><div style={{fontSize:14,marginBottom:8}}>No vehicles. Add vehicles in Fleet tab.</div></div>}
 
       {vehiclesWithJobs.map(v => {
@@ -787,7 +795,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
 
         return <>
           {/* Summary cards */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:16}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:12}}>
             {[
               {label:"Total Jobs",val:allJobs.length,color:"#E8C94A"},
               {label:"Passengers",val:totalPassengers,color:"#3b82f6"},
@@ -799,6 +807,16 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
               <div style={{fontSize:9,fontWeight:700,color:"#666",textTransform:"uppercase",letterSpacing:"0.05em"}}>{c.label}</div>
               <div style={{fontSize:20,fontWeight:800,color:c.color,marginTop:2}}>{c.val}</div>
             </div>)}
+          </div>
+
+          {/* Day-level actions */}
+          <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            <button onClick={async()=>{for(const v of vehicles){const jobs=dayJobs.filter(j=>j.vehicleId===v.id);const calcable=jobs.filter(j=>{const isRet=j.jobType==="wrap_return";const isMov=j.jobType==="set_move"||j.jobType==="errand"||j.jobType==="custom";if(isMov)return false;const ppl=isRet?(j.stops||[]).filter(s=>s.type==="dropoff"):(j.stops||[]).filter(s=>s.type==="pickup");return ppl.length>0;});for(const job of calcable){await calcRoute(job);}}}} disabled={!!calc||!!calcAll} style={{...BS,padding:"8px 16px",fontSize:12,fontWeight:700}}>
+              {calc||calcAll?"⏳ Calculating...":"📍 Calculate All Routes"}
+            </button>
+            <button onClick={()=>{const optimized=dayJobs.filter(j=>j.optimized||j.jobType==="wrap_return");if(optimized.length===0)return;const allMsgs=[];optimized.forEach(j=>{const v=vehicles.find(x=>x.id===j.vehicleId);const drv=crew.find(c=>c.id===v?.driverId);const isRet=j.jobType==="wrap_return";if(isRet){const origin=j.stops?.find(s=>s.type==="origin");const oLoc=locations.find(l=>l.id===origin?.locationId);const dropoffs=j.stops?.filter(s=>s.type==="dropoff")||[];dropoffs.forEach(s=>{const name=gPN(s);allMsgs.push({to:name,job:j.label,msg:`Wrap transport departs ${fmtTime(origin?.departTime)} from ${oLoc?.name||origin?.address||"set"}. Vehicle: ${v?.label||"—"}, Driver: ${drv?.name||"—"}.`});});}else{const pk=j.stops?.filter(s=>s.type==="pickup")||[];const dest=j.stops?.find(s=>s.type==="destination");pk.forEach(s=>{const name=gPN(s);allMsgs.push({to:name,job:j.label,msg:`Pickup at ${fmtTime(s.pickupTime)} from ${s.address||"—"}. Vehicle: ${v?.label||"—"}, Driver: ${drv?.name||"—"}. Call: ${fmtTime(dest?.arrivalTime)}.`});});}});setDispPrev({route:{label:"All Day — "+day?.label},msgs:allMsgs,dMsg:null,isAll:true});}} style={{...BS,padding:"8px 16px",fontSize:12,fontWeight:700,borderColor:"#3b82f633",color:"#3b82f6"}}>
+              <I.Send/> Dispatch All Day ({dayJobs.filter(j=>j.optimized||j.jobType==="wrap_return").length} jobs)
+            </button>
           </div>
 
           {/* Transport Coverage — who's planned, who's not */}
