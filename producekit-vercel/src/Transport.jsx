@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { VEHICLE_TYPES, fmtTime, fmtDate, toKm, addMin, I, StatusBadge, TrafficBadge, Modal, IS, LS, BP, BS, BD, callRouteOptimize, AddressInput } from "./config.jsx";
+import { VEHICLE_TYPES, fmtTime, fmtDate, toKm, addMin, I, StatusBadge, Modal, IS, LS, BP, BS, BD, callRouteOptimize, AddressInput } from "./config.jsx";
 
 const JOB_TYPES = [
   { id:"am_pickup", label:"AM Pickup", icon:"🌅", color:"#E8C94A" },
@@ -556,7 +556,30 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             return r.stops.filter(s=>s.type===sType).length>0;
           }));
         };
-        const vOpts = (cMap) => vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);const used=cMap[v.id]||0;const cap=vt?.capacity||8;const full=used>=cap;return{id:v.id,label:v.label,color:v.color,used,cap,full};});
+        const vOpts = (cMap) => vehicles.map(v=>{const vt=VEHICLE_TYPES.find(t=>t.id===v.type);const used=cMap[v.id]||0;const cap=vt?.capacity||8;const full=used>=cap;return{id:v.id,label:v.label,color:v.color||"#888",used,cap,full};});
+
+        // Sort: cast by costume time (earliest first), crew by call time
+        const getTime = (person, isCast) => {
+          if (isCast) { const cs=day?.callSheet?.cast?.[String(person.id)]; return cs?.costume||cs?.makeup||cs?.onSet||"99:99"; }
+          return day?.callSheet?.crew?.[String(person.id)]?.callTime||day?.callTime||"99:99";
+        };
+        const sortedCast = [...dayCast].sort((a,b)=>getTime(a,true).localeCompare(getTime(b,true)));
+        const sortedCrew = [...dayCrew].sort((a,b)=>getTime(a,false).localeCompare(getTime(b,false)));
+
+        const VehSelect = ({person, isCast, mode, cMap}) => (
+          <select onChange={e=>{if(e.target.value)assignTo({...person,isCast},e.target.value,mode);e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"3px 4px",color:"#888",fontSize:10,width:"100%",cursor:"pointer"}}>
+            <option value="">— assign —</option>
+            {vOpts(cMap).map(v=><option key={v.id} value={v.id} disabled={v.full} style={{color:v.full?"#444":"#ccc"}}>{v.full?"⛔":"●"} {v.label} ({v.used}/{v.cap})</option>)}
+          </select>
+        );
+
+        const VehBadge = ({info, personId, mode}) => (
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:info.vehicle?.color||"#22c55e",flexShrink:0}}/>
+            <span style={{fontSize:10,fontWeight:700,color:info.vehicle?.color||"#22c55e"}}>{info.vehicle?.label}</span>
+            <button onClick={()=>unassign(personId,mode)} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9,marginLeft:2}} title="Remove">✕</button>
+          </div>
+        );
 
         return <div style={{marginBottom:12}}>
           <button onClick={()=>setShowShuttle(p=>!p)} style={{...BS,width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
@@ -570,41 +593,29 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
             <span style={{fontSize:10,color:"#666"}}>{showShuttle?"▲":"▼"}</span>
           </button>
           {showShuttle&&<div style={{background:"#12141a",border:"1px solid #2a2d35",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:520}}>
               <thead><tr style={{borderBottom:"2px solid #1e2028"}}>
-                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left",width:24}}>#</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left",width:28}}>#</th>
                 <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#555",textAlign:"left"}}>Name</th>
-                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#f59e0b",textAlign:"left",width:46}}>Time</th>
-                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#E8C94A",textAlign:"left",width:130}}>🌅 AM Pickup</th>
-                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#a855f7",textAlign:"left",width:130}}>🌙 Wrap Return</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#f59e0b",textAlign:"center",width:52}}>Call</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#E8C94A",textAlign:"left",width:140}}>🌅 AM Pickup</th>
+                <th style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#a855f7",textAlign:"left",width:140}}>🌙 Wrap Return</th>
               </tr></thead>
               <tbody>
-                {dayCast.map(c=>{const cs=day?.callSheet?.cast?.[String(c.id)];const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"c"+c.id} style={{borderBottom:"1px solid #1a1d23"}}>
-                  <td style={{padding:"3px 8px",fontSize:10,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
-                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:600,color:"#f0f0f0"}}>{c.name}{c.roleName&&<span style={{fontSize:9,color:"#555",marginLeft:4}}>({c.roleName})</span>}</td>
-                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:700,color:"#f59e0b",fontFamily:"monospace"}}>{cs?.costume||"—"}</td>
-                  <td style={{padding:"3px 6px"}}>{pi
-                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:pi.vehicle?.color||"#22c55e",background:(pi.vehicle?.color||"#22c55e")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{pi.vehicle?.label}</span><button onClick={()=>unassign(c.id,"pickup")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
-                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:true},e.target.value,"pickup");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehPickupCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
-                  }</td>
-                  <td style={{padding:"3px 6px"}}>{ri
-                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:ri.vehicle?.color||"#a855f7",background:(ri.vehicle?.color||"#a855f7")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{ri.vehicle?.label}</span><button onClick={()=>unassign(c.id,"return")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
-                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:true},e.target.value,"return");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehReturnCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
-                  }</td>
+                {sortedCast.map(c=>{const cs=day?.callSheet?.cast?.[String(c.id)];const t=cs?.costume||"—";const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"c"+c.id} style={{borderBottom:"1px solid #1a1d23",background:(!pi||!ri)?"#ef444404":"transparent"}}>
+                  <td style={{padding:"4px 8px",fontSize:11,fontWeight:800,color:"#E8C94A"}}>{c.roleNum}</td>
+                  <td style={{padding:"4px 8px"}}><span style={{fontSize:12,fontWeight:600,color:"#f0f0f0"}}>{c.name}</span>{c.roleName&&<span style={{fontSize:9,color:"#555",marginLeft:5}}>({c.roleName})</span>}</td>
+                  <td style={{padding:"4px 8px",textAlign:"center"}}><span style={{fontSize:14,fontWeight:800,color:"#f59e0b",fontFamily:"monospace"}}>{t}</span></td>
+                  <td style={{padding:"4px 6px"}}>{pi?<VehBadge info={pi} personId={c.id} mode="pickup"/>:<VehSelect person={c} isCast={true} mode="pickup" cMap={vehPickupCount}/>}</td>
+                  <td style={{padding:"4px 6px"}}>{ri?<VehBadge info={ri} personId={c.id} mode="return"/>:<VehSelect person={c} isCast={true} mode="return" cMap={vehReturnCount}/>}</td>
                 </tr>;})}
-                {dayCrew.length>0&&<tr><td colSpan={5} style={{padding:"5px 8px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",background:"#3b82f606",borderBottom:"1px solid #1e2028"}}>Crew ({dayCrew.length})</td></tr>}
-                {dayCrew.map(c=>{const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"w"+c.id} style={{borderBottom:"1px solid #1a1d23"}}>
-                  <td style={{padding:"3px 8px"}}></td>
-                  <td style={{padding:"3px 8px",fontSize:11,fontWeight:500,color:"#ccc"}}>{c.name}<span style={{fontSize:9,color:"#555",marginLeft:4}}>{c.dept}</span></td>
-                  <td style={{padding:"3px 8px",fontSize:10,color:"#666",fontFamily:"monospace"}}>{day?.callTime||"—"}</td>
-                  <td style={{padding:"3px 6px"}}>{pi
-                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:pi.vehicle?.color||"#22c55e",background:(pi.vehicle?.color||"#22c55e")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{pi.vehicle?.label}</span><button onClick={()=>unassign(c.id,"pickup")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
-                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:false},e.target.value,"pickup");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehPickupCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
-                  }</td>
-                  <td style={{padding:"3px 6px"}}>{ri
-                    ?<div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:9,color:ri.vehicle?.color||"#a855f7",background:(ri.vehicle?.color||"#a855f7")+"18",padding:"1px 5px",borderRadius:3,fontWeight:700}}>{ri.vehicle?.label}</span><button onClick={()=>unassign(c.id,"return")} style={{background:"none",border:"none",color:"#444",cursor:"pointer",padding:0,fontSize:9}}>✕</button></div>
-                    :<select onChange={e=>{if(e.target.value)assignTo({...c,isCast:false},e.target.value,"return");e.target.value="";}} defaultValue="" style={{background:"#1a1d23",border:"1px solid #2a2d35",borderRadius:4,padding:"2px 3px",color:"#888",fontSize:9,width:"100%",cursor:"pointer"}}><option value="">—</option>{vOpts(vehReturnCount).map(v=><option key={v.id} value={v.id} disabled={v.full}>{v.label} ({v.used}/{v.cap})</option>)}</select>
-                  }</td>
+                {sortedCrew.length>0&&<tr><td colSpan={5} style={{padding:"6px 8px",fontSize:9,fontWeight:700,color:"#3b82f6",textTransform:"uppercase",background:"#3b82f606",borderTop:"2px solid #1e2028",borderBottom:"1px solid #1e2028"}}>Crew ({sortedCrew.length})</td></tr>}
+                {sortedCrew.map(c=>{const crewCall=day?.callSheet?.crew?.[String(c.id)]?.callTime||day?.callTime||"—";const pi=pickupMap[String(c.id)];const ri=returnMap[String(c.id)];return <tr key={"w"+c.id} style={{borderBottom:"1px solid #1a1d23",background:(!pi||!ri)?"#ef444404":"transparent"}}>
+                  <td style={{padding:"4px 8px"}}></td>
+                  <td style={{padding:"4px 8px"}}><span style={{fontSize:12,fontWeight:500,color:"#ccc"}}>{c.name}</span><span style={{fontSize:9,color:"#555",marginLeft:5}}>{c.dept}</span></td>
+                  <td style={{padding:"4px 8px",textAlign:"center"}}><span style={{fontSize:14,fontWeight:800,color:"#888",fontFamily:"monospace"}}>{crewCall}</span></td>
+                  <td style={{padding:"4px 6px"}}>{pi?<VehBadge info={pi} personId={c.id} mode="pickup"/>:<VehSelect person={c} isCast={false} mode="pickup" cMap={vehPickupCount}/>}</td>
+                  <td style={{padding:"4px 6px"}}>{ri?<VehBadge info={ri} personId={c.id} mode="return"/>:<VehSelect person={c} isCast={false} mode="return" cMap={vehReturnCount}/>}</td>
                 </tr>;})}
               </tbody>
             </table>
@@ -612,7 +623,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
         </div>;
       })()}
 
-            {/* Vehicle Day Plans */}
+                  {/* Vehicle Day Plans */}
       {vehicles.length===0&&<div style={{textAlign:"center",padding:40,color:"#555"}}><div style={{fontSize:36,marginBottom:12}}>🚐</div><div style={{fontSize:14,marginBottom:8}}>No vehicles. Add vehicles in Fleet tab.</div></div>}
 
       {vehiclesWithJobs.map(v => {
@@ -682,12 +693,12 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                     {moveFrom&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1e2028"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:"#3b82f618",color:"#3b82f6",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>A</span>
                       <span style={{flex:1,fontSize:12,fontWeight:600,color:"#3b82f6"}}>FROM — {fLoc?.name||moveFrom.address||"—"}</span>
-                      {moveFrom.departTime&&<span style={{fontSize:13,fontWeight:800,color:"#3b82f6",fontFamily:"monospace"}}>{fmtTime(moveFrom.departTime)}</span>}
+                      {moveFrom.departTime&&<span style={{fontSize:15,fontWeight:800,color:"#3b82f6",fontFamily:"monospace"}}>{fmtTime(moveFrom.departTime)}</span>}
                     </div>}
                     {moveTo&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>B</span>
                       <span style={{flex:1,fontSize:12,fontWeight:600,color:"#22c55e"}}>TO — {tLoc?.name||moveTo.address||"—"}</span>
-                      {moveTo.arrivalTime&&<span style={{fontSize:13,fontWeight:800,color:"#22c55e",fontFamily:"monospace"}}>{fmtTime(moveTo.arrivalTime)}</span>}
+                      {moveTo.arrivalTime&&<span style={{fontSize:15,fontWeight:800,color:"#22c55e",fontFamily:"monospace"}}>{fmtTime(moveTo.arrivalTime)}</span>}
                     </div>}
                     {job.notes&&<div style={{fontSize:10,color:"#888",marginTop:4,fontStyle:"italic"}}>{job.notes}</div>}
                   </>) : isReturnJob ? (<>
@@ -698,7 +709,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                         <span style={{fontSize:12,fontWeight:600,color:"#3b82f6"}}>DEPART — {oLoc?.name||origin.address}</span>
                         {oLoc?.name&&origin.address&&<div style={{fontSize:10,color:"#666"}}>{origin.address}</div>}
                       </div>
-                      {origin.departTime&&<span style={{fontSize:13,fontWeight:800,color:"#3b82f6"}}>{fmtTime(origin.departTime)}</span>}
+                      {origin.departTime&&<span style={{fontSize:15,fontWeight:800,color:"#3b82f6"}}>{fmtTime(origin.departTime)}</span>}
                     </div>}
                     {dropoffs.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #1e2028"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:jt.color+"18",color:jt.color,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
@@ -707,7 +718,7 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                         <span style={{fontSize:10,color:"#666",marginLeft:6}}>drop-off</span>
                         <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
                       </div>
-                      {s.dropoffTime&&<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.dropoffTime)}</span>}
+                      {s.dropoffTime&&<span style={{fontSize:15,fontWeight:800,color:jt.color,flexShrink:0}}>{fmtTime(s.dropoffTime)}</span>}
                     </div>)}
                   </>) : (<>
                     {/* Pickup: Stops → Destination */}
@@ -720,13 +731,12 @@ const TransportModule = ({ vehicles, setVehicles, routes, setRoutes, days, strip
                         {s.personType==="cast"&&getCostumeTime(s.personId,selDay)&&<span style={{fontSize:10,color:"#f59e0b",marginLeft:6}}>costume {getCostumeTime(s.personId,selDay)}</span>}
                         <div style={{fontSize:10,color:"#888"}}>{s.address}</div>
                       </div>
-                      {s.pickupTime?<span style={{fontSize:13,fontWeight:800,color:jt.color,flexShrink:0,fontFamily:"monospace"}}>{fmtTime(s.pickupTime)}</span>:<span style={{fontSize:9,color:"#555",flexShrink:0}}>calc →</span>}
-                      <TrafficBadge note={s.trafficNote}/>
+                      {s.pickupTime?<span style={{fontSize:15,fontWeight:800,color:jt.color,flexShrink:0,fontFamily:"monospace"}}>{fmtTime(s.pickupTime)}</span>:<span style={{fontSize:9,color:"#555",flexShrink:0}}>calc →</span>}
                     </div>)}
                     {dest&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0"}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:"#22c55e18",color:"#22c55e",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✓</span>
                       <span style={{flex:1,fontSize:12,fontWeight:600,color:"#22c55e"}}>ARRIVE — {dLoc?.name||dest.address}</span>
-                      <span style={{fontSize:13,fontWeight:800,color:"#22c55e"}}>{fmtTime(dest.arrivalTime)}</span>
+                      <span style={{fontSize:15,fontWeight:800,color:"#22c55e"}}>{fmtTime(dest.arrivalTime)}</span>
                     </div>}
                   </>)}
                   {job.gmapsUrl&&<a href={job.gmapsUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,fontSize:10,color:"#3b82f6",textDecoration:"none"}}>Open in Google Maps <I.ExternalLink/></a>}
